@@ -2,7 +2,7 @@ const fs = require('fs');
 const https = require('https');
 const config = require('./config.js');
 const core = new (require('./core/core.js'))();
-const listener = function (request, response) {
+const listener = (request, response) => {
   response.setHeader('Content-Type', 'application/json');
   const parsedUrl = new URL(request.url, `https://${config.host}`);
   const apiPath = parsedUrl.pathname.split('/');
