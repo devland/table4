@@ -1,11 +1,10 @@
 const fs = require('fs');
 const https = require('https');
-const url = require('url');
 const config = require('./config.js');
 const core = new (require('./core/core.js'))();
 const listener = function (request, response) {
   response.setHeader('Content-Type', 'application/json');
-  const parsedUrl = url.parse(request.url, true);
+  const parsedUrl = new URL(request.url, `https://${config.host}`);
   const apiPath = parsedUrl.pathname.split('/');
   let body = '';
   request.on('data', chunk => {
@@ -38,6 +37,9 @@ server.on('close', (error) => {
   console.log('server closing...');
   console.log(error);
 });
-server.listen({port: config.port}, () => {
+server.listen({
+  host: config.host,
+  port: config.port
+}, () => {
   console.log(`${config.name} server listening on port ${config.port}`);
 });
