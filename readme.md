@@ -24,4 +24,4 @@ echo -n "admin" | openssl sha1 -hmac "<secret_goes_here>"
 Start the CouchDB service via `systemctl start couchdb`. To stop it run `systemctl stop couchdb`.  
 To enable it as a system service (it will start automatically when the system starts) run `systemctl enable couchdb`. To disable it as a system service run `systemctl disable couchdb`.
 
-Edit `config.js` file or use environement variables.
+Edit `config.js` file or use environment variables.
