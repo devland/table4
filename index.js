@@ -27,8 +27,8 @@ const listener = (request, response) => {
   });
 };
 const server = https.createServer({
-  key: fs.readFileSync(process.env.table4_key_path || 'keys/key.pem'),
-  cert: fs.readFileSync(process.env.table4_cert_path || 'keys/cert.pem')
+  key: fs.readFileSync(config.sshKeyPath),
+  cert: fs.readFileSync(config.sshCertPath)
 }, listener);
 server.on('error', (error) => {
   console.log(error);
