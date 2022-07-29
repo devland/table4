@@ -1,4 +1,5 @@
-const users = require('../api/users.js');
+const fs = require('fs');
+const apis = fs.readdirSync('api');
 module.exports = function(options) {
   this.methods = {
     'core.hello': (request, response) => {
@@ -6,5 +7,8 @@ module.exports = function(options) {
       response.end('{"message": "hello"}');
     }
   }
-  this.methods = {...this.methods, ...users};
+  for (let item of apis) {
+    const api = require(`../api/${item}`);
+    this.methods = {...this.methods, ...api};
+  }
 }

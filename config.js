@@ -7,5 +7,6 @@ module.exports = {
   dbUser: process.env[`${name}_dbUser`] || 'admin',
   dbToken: process.env[`${name}_dbUserName`] || '2d5c36cf2514a02970a609c26d514ee443b92951',
   sshKeyPath: process.env[`${name}_sshKeyPath`] || 'keys/key.pem',
-  sshCertPath: process.env[`${name}_sshCertPath`] || 'keys/cert.pem'
+  sshCertPath: process.env[`${name}_sshCertPath`] || 'keys/cert.pem',
+  hashSecret: process.env[`${name}_hashSecret`] || 'cheeSe4caKe'
 }

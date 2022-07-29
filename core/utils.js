@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const net = {
   'http:': require('http'),
   'https:': require('https')
@@ -5,18 +6,40 @@ const net = {
 module.exports = {
   handleResult: (response) => {
     return (result) => {
-      response.writeHead(result.status || 200);
-      response.end(result.body);
+      response.writeHead(200);
+      if (typeof result == 'object') result = JSON.stringify(result);
+      response.end(result);
     }
   },
-  handleError: (response, status) => {
+  handleError: (response) => {
     return (error) => {
+      const now = new Date();
+      console.log(`> ${now} .${now.getMilliseconds()} > error`);
       console.log(error);
-      response.writeHead(status || 500);
-      response.end(`{ "error": "${error.message}" }`);
+      response.writeHead(error?.status || 500);
+      if (error.message) response.end(`{ "error": "${error?.message}" }`);
+      else response.end(error);
     }
   },
-  fetch: (method, url, options) => {
+  handleCouchPromise: (promise) => {
+    return new Promise((resolve, reject) => {
+      promise
+        .then((result) => {
+          try {
+            if (![200, 201, 404].includes(result?.status)) reject(JSON.parse(result?.body));
+            else if (JSON.parse(result?.body)?.error == 'not_found') resolve();
+            else resolve(JSON.parse(result.body.docs || result.body));
+          }
+          catch(error) {
+            reject(error);
+          }
+        })
+        .catch((error) => {
+          reject(error);
+        });
+    });
+  },
+  fetch: (method, url, options, body) => {
     return new Promise((resolve, reject) => {
       try {
         let protocol = 'https';
@@ -44,11 +67,15 @@ module.exports = {
         request.on('error', (error) => {
           reject(error);
         });
+        if (body) request.write(body);
         request.end();
       }
       catch(error) {
         reject(error);
       }
     });
+  },
+  hash: (input, secret) => {
+    return crypto.createHmac('sha1', secret).update(input).digest('hex');
   }
 }
