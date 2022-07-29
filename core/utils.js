@@ -18,7 +18,7 @@ module.exports = {
       console.log(error);
       response.writeHead(error?.status || 500);
       if (error.message) response.end(`{ "error": "${error?.message}" }`);
-      else response.end(error);
+      else response.end(error?.body || error);
     }
   },
   handleCouchPromise: (promise) => {
@@ -26,7 +26,7 @@ module.exports = {
       promise
         .then((result) => {
           try {
-            if (![200, 201, 404].includes(result?.status)) reject(JSON.parse(result?.body));
+            if (![200, 201, 404].includes(result?.status)) reject(result?.body);
             else if (JSON.parse(result?.body)?.error == 'not_found') resolve();
             else resolve(JSON.parse(result.body.docs || result.body));
           }
@@ -47,7 +47,7 @@ module.exports = {
         if (url) {
           const parsedUrl = new URL(url);
           options.hostname = parsedUrl.hostname;
-          options.path = parsedUrl.pathname;
+          options.path = `${parsedUrl.pathname}${parsedUrl.search}`;
           options.port = parsedUrl.port;
           protocol = parsedUrl.protocol;
         }

@@ -22,7 +22,7 @@ module.exports = {
     return utils.handleCouchPromise(utils.fetch('post', `${config.dbUrl}/_find`, options, JSON.stringify(body)));
   },
   upsert: (body, id, rev) => {
-    return utils.handleCouchPromise(utils.fetch(id ? 'put' : 'post', `${config.dbUrl}/${id || ''}${rev ? `?rev=${rev}` : ''}`, options, JSON.stringify(body)));
+    return utils.handleCouchPromise(utils.fetch('put', `${config.dbUrl}/${id || ''}${rev ? `?rev=${rev}` : ''}`, options, JSON.stringify(body)));
   },
   delete: (id, rev) => {
     return utils.handleCouchPromise(utils.fetch('delete', `${config.dbUrl}/${id}?rev=${rev}`, options));

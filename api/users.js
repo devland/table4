@@ -14,7 +14,7 @@ module.exports = {
     if (typeof request?.body?.name != 'string' || request.body.name.length < 8 || !nameTester.test(request.body.name))
       return utils.handleError(response)(new Error('invalid_name'));
     const keyTester=new RegExp(/^[a-z0-9]+$/i);
-    if (typeof request.body.key != 'string' || request.body.key.length < 40 || !keyTester.test(request.body.key))
+    if (typeof request.body.key != 'string' || request.body.key.length != 40 || !keyTester.test(request.body.key))
       return utils.handleError(response)(new Error('invalid_key'));
     if (!Array.isArray(request.body.roles) || !request.body.roles.length)
       return utils.handleError(response)(new Error('invalid_roles'));
@@ -26,19 +26,19 @@ module.exports = {
       if (index > maxRole) maxRole = index;
     }
     for (let item of request.body.roles) {
-      const index = request.body.roles.indexOf(item);
+      const index = roles.indexOf(item);
       if (index > maxWanted) maxWanted = index;
     }
     if (maxWanted < 0) return utils.handleError(response)(new Error('invalid_roles'));
     if (maxWanted > maxRole) return utils.handleError(response)(new Error('access_denied'));
     couch.get(`user:${request.body.name}`)
       .then((result) => {
-        if (!result) return couch.upsert({
+        if (request.body.rev || !result) return couch.upsert({
           type: 'user',
-          name: request.body.name,
+          name: result?.name || request.body.name,
           key: request.body.key,
           roles: request.body.roles
-        }, `user:${request.body.name}`);
+        }, `user:${request.body.name}`, request.body.rev);
         else return Promise.reject(new Error('user_exists'));
       })
       .then(utils.handleResult(response))
