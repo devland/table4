@@ -33,15 +33,17 @@ module.exports = {
     if (maxWanted > maxRole) return utils.handleError(response)(new Error('access_denied'));
     couch.get(`user:${request.body.name}`)
       .then((result) => {
-        if (request.body.rev || !result) return couch.upsert({
+        if (request.body.rev || !result) return couch.bulk([{
+          _id: `user:${request.body.name}`,
+          _rev: request.body.rev,
           type: 'user',
           name: result?.name || request.body.name,
           key: request.body.key,
           roles: request.body.roles
-        }, `user:${request.body.name}`, request.body.rev);
+        }]);
         else return Promise.reject(new Error('user_exists'));
       })
-      .then(utils.handleResult(response))
+      .then((result) => { utils.handleResult(response)(result[0]); })
       .catch(utils.handleError(response));
   },
   'users.login': (request, response) => {
@@ -56,22 +58,23 @@ module.exports = {
         else return Promise.reject(new Error('login_failed'));
       })
       .then((result) => {
-        const body = {};
-        for (let item of result.docs) body[item._id] = [item._rev];
-        if (Object.keys(body).length) return couch.purge(body);
+        const list = [];
+        for (let item of result.docs) list.push({ _id: item._id, _rev: item._rev, _deleted: true });
+        if (list.length) return couch.bulk(list);
         else return Promise.resolve();
       })
       .then((result) => {
         const expiration = new Date();
         expiration.setHours(expiration.getHours() + 1);
-        return couch.upsert({
+        return couch.bulk([{
+          _id: `token:${utils.hash(`token:${request.body.name}:${expiration.getTime()}`, config.hashSecret)}`,
           type: 'token',
           name: request.body.name,
           expiration
-        }, `token:${utils.hash(`token:${request.body.name}:${expiration.getTime()}`, config.hashSecret)}`);
+        }]);
       })
       .then((result) => {
-        utils.handleResult(response)({ token: result?.id.split(':')[1] });
+        utils.handleResult(response)({ token: result[0]?.id.split(':')[1] });
       })
       .catch(utils.handleError(response));
   }

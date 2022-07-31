@@ -21,13 +21,7 @@ module.exports = {
   find: (body) => {
     return utils.handleCouchPromise(utils.fetch('post', `${config.dbUrl}/_find`, options, JSON.stringify(body)));
   },
-  upsert: (body, id, rev) => {
-    return utils.handleCouchPromise(utils.fetch('put', `${config.dbUrl}/${id || ''}${rev ? `?rev=${rev}` : ''}`, options, JSON.stringify(body)));
-  },
-  delete: (id, rev) => {
-    return utils.handleCouchPromise(utils.fetch('delete', `${config.dbUrl}/${id}?rev=${rev}`, options));
-  },
-  purge: (body) => {
-    return utils.handleCouchPromise(utils.fetch('post', `${config.dbUrl}/_purge`, options, JSON.stringify(body)));
+  bulk: (docs) => {
+    return utils.handleCouchPromise(utils.fetch('post', `${config.dbUrl}/_bulk_docs`, options, JSON.stringify({docs})));
   }
 }
