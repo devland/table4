@@ -1,7 +1,8 @@
-const http = require('https');
+const https = require('https');
 const fs = require('fs');
+const api = require('./require/api.js');
 const mimes = require('./require/mimes.js');
-const config = require(process.argv[2] || './config.sample.js');
+const config = require('./config.js');
 const options = {
   key: fs.readFileSync('keys/privatekey.pem'),
   cert: fs.readFileSync('keys/certificate.pem')
@@ -50,10 +51,15 @@ const handleStatic = (url, response) => {
   response.write(result, 'binary');
   response.end();
 }
-http.createServer(options, (request, response) => {
+https.createServer(options, (request, response) => {
   try {
     const benchmarkStart = new Date();
-    handleStatic(request.url, response);
+    if (request.url == '/api') {
+      api.hello(request, response);
+    }
+    else {
+      handleStatic(request.url, response);
+    }
     const benchmarkEnd = new Date();
     log(`${request.url} (${(benchmarkEnd - benchmarkStart)} ms)`);
   }

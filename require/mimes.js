@@ -1,4 +1,4 @@
- module.exports = [
+module.exports = [
   {
     "type": "application/vnd.lotus-1-2-3",
     "extensions": [

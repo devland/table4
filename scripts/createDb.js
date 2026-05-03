@@ -1,21 +1,15 @@
-const shell = require('../sqlite3console/index.js');
+const { DatabaseSync } = require('node:sqlite');
+const db = new DatabaseSync('./test.db');
 const fs = require('fs');
 let query = fs.readFileSync('./table4.sql', 'utf-8');
-// show tables so that promise does not stall since create/insert commands do not output result
-query += "select name from sqlite_master where type='table';\n";
-let sql;
-shell(['../test.db']) // sqlite3 db to use; other sqlite3 cli arguments can be provided as array items
-  .then((result) => {
-    sql = result;
-    return sql.run(query);
-  })
-  .then((result) => {
-    console.log('>>> db tables');
-    console.log(result);
-    return sql.end(); // end shell process
-  })
-  .catch((error) => {
-    console.log('>>> query error');
-    console.log(error);
-    process.exit(1);
-  });
+db.exec(query);
+let insert = db.prepare('insert into users (name, password, email, created_at) values (:name, :password, :email, :created_at)');
+insert.run({
+  name: 'gigi',
+  password: 'cheesecake',
+  email: 'yup2@lol.net',
+  created_at: new Date().toISOString()
+});
+query = db.prepare("select *, unixepoch('now') - unixepoch(created_at) as time_diff from users");
+console.log(query.all());
+//console.log(db.prepare("select name from sqlite_master where type='table'").all());
