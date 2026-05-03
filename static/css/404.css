@@ -1,0 +1,19 @@
+.center {
+  width: 100vw;
+  height: 100vh;
+  display: grid;
+  align-items: center;
+  justify-content: center;
+  font-family: "PoppinsBold";
+  color: #7159A6;
+  text-align: center;
+}
+.center .text {
+  font-size: 3vmax;
+}
+.center .image {
+  margin: 3vw 0 3vw 0;
+}
+img {
+  width: 50vw;
+}

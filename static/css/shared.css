@@ -1,0 +1,36 @@
+@font-face {
+  font-family: "PoppinsRegular";
+  src: url("../fonts/Poppins-Regular.ttf")  format("truetype");
+  font-weight: normal;
+  font-style: normal;
+}
+@font-face {
+  font-family: "PoppinsBold";
+  src: url("../fonts/Poppins-Bold.ttf")  format("truetype");
+  font-weight: normal;
+  font-style: normal;
+}
+body {
+  margin: 0;
+  padding: 0;
+  background-color: white;
+  font-family: "PoppinsRegular";
+  white-space: nowrap;
+  font-size: 0;
+}
+a {
+  font-size: 1.25vmax;
+  color: #909090;
+  text-decoration: none;
+  transition: color 0.25s;
+}
+a:hover {
+  color: #7159A6;
+}
+a.active {
+  color: #7159A6;
+  font-family: "PoppinsBold";
+}
+include {
+  display: block;
+}
