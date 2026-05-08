@@ -53,15 +53,12 @@ const handleStatic = (url, response) => {
 }
 https.createServer(options, (request, response) => {
   try {
-    const benchmarkStart = new Date();
     if (request.url == '/api') {
-      api.hello(request, response);
+      api.request(request, response);
     }
     else {
       handleStatic(request.url, response);
     }
-    const benchmarkEnd = new Date();
-    log(`${request.url} (${(benchmarkEnd - benchmarkStart)} ms)`);
   }
   catch (error) {
     log(error);
@@ -70,6 +67,4 @@ https.createServer(options, (request, response) => {
     response.end();
   }
 }).listen(parseInt(config.port));
-log(`static file server running at http://localhost:${config.port}`);
-log('using config');
-log(config);
+log(`table4 server running at https://localhost:${config.port}`);
