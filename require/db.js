@@ -3,7 +3,7 @@ module.exports = function (options) {
   this.db = new DatabaseSync(options.dbPath);
   this.tokens = {
     get: (data) => {
-      const query = this.db.prepare(`select * from tokens where token = :token`);
+      const query = this.db.prepare('select * from tokens where token = :token');
       return query.get({ token: data.token });
     },
     add: (data, duration) => {
@@ -17,7 +17,7 @@ module.exports = function (options) {
       });
     },
     clean: () => {
-      const query = this.db.prepare(`delete from tokens where expires_at < :maxTime`);
+      const query = this.db.prepare('delete from tokens where expires_at < :maxTime');
       return query.run({
         maxTime: new Date().toISOString()
       });
@@ -27,10 +27,10 @@ module.exports = function (options) {
     get: (data) => {
       let query;
       if (data.id) {
-        query = this.db.prepare(`select * from users where id = :id`);
+        query = this.db.prepare('select * from users where id = :id');
       }
       else if (data.email) {
-        query = this.db.prepare(`select * from users where email = :email`);
+        query = this.db.prepare('select * from users where email = :email');
       }
       return query.get(data);
     },
@@ -41,6 +41,14 @@ module.exports = function (options) {
         ...data,
         created_at: new Date().toISOString()
       });
+    }
+  }
+  this.plugins = {
+    getAll: (data) => {
+      return this.db.prepare('select * from plugins').all();
+    },
+    getActive: (data) => {
+      return this.db.prepare('select * from plugins where active = 1').all();
     }
   }
 }

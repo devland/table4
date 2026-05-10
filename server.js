@@ -7,11 +7,7 @@ const options = {
   key: fs.readFileSync('keys/privatekey.pem'),
   cert: fs.readFileSync('keys/certificate.pem')
 }
-const log = (item) => {
-  const now = new Date();
-  process.stdout.write(`[${now.toISOString()}]: `);
-  console.log(item);
-}
+const { log } = require('./require/utils.js');
 const getMimeType = (extension) => {
   for (let item of mimes) {
     if (item.extensions.includes(extension)) {

@@ -31,3 +31,12 @@ CREATE INDEX "users_email" ON "users" (
 CREATE INDEX "users_type" ON "users" (
 	"type"	ASC
 );
+CREATE TABLE "plugins" (
+	"name"	TEXT NOT NULL UNIQUE,
+	"active"	TEXT NOT NULL DEFAULT 'false',
+	PRIMARY KEY("name")
+);
+CREATE INDEX "plugins_name_active" ON "plugins" (
+	"name"	ASC,
+	"active"	ASC
+);
