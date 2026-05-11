@@ -1,7 +1,8 @@
+const { handle } = require('../../require/utils.js');
 module.exports = {
   hello: {
-    after: (request, response) => {
-      console.log('hello plugin !!!');
+    main: (request, response) => {
+      handle(response, null, 'Hi. :)');
     }
   }
 }

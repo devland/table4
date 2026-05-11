@@ -1,25 +1,11 @@
 const crypto = require('crypto');
 const config = require('../config.js');
 const passhash = require('./passhash.js');
-const { log } = require('../require/utils.js');
+const access = require('./access.js');
+const { log, handle } = require('../require/utils.js');
 const db = new (require('./db.js'))({ dbPath: config.dbPath });
-const handle = (response, error, output) => {
-  const headers = { 'Content-Type': 'application/json' }
-  if (error) {
-    response.writeHead(500, headers);
-    response.write(JSON.stringify({
-      error: error.toString(),
-      stack: error.stack
-    }));
-  }
-  else {
-    response.writeHead(200, headers);
-    response.write(JSON.stringify({ output }));
-  }
-  response.end();
-}
 this.hooks = {}
-const loadHooks = () => {
+const loadPlugins = () => {
   this.hooks = {}
   let result = db.plugins.getAll();
   for (let item of result) {
@@ -30,9 +16,13 @@ const loadHooks = () => {
     for (let method in plugin) {
       if (!this.hooks[method]) {
         this.hooks[method] = {
+          main: null,
           before: [],
           after: []
         }
+      }
+      if (plugin[method].main) {
+        module.exports[method] = plugin[method].main;
       }
       if (plugin[method].before) {
         this.hooks[method].before.push(plugin[method].before);
@@ -44,7 +34,28 @@ const loadHooks = () => {
   }
   log(`active plugins: ${Object.keys(this.hooks)}`);
 }
-loadHooks();
+const isAllowed = (request, response) => {
+  if (!request.table4.user || !request.table4.token) {
+    handle(response, 'not_logged_in');
+    return false;
+  }
+  const now = new Date();
+  if (request.table4.token.expires_at < now) {
+    handle(response, 'token_expired');
+    return false;
+  }
+  const rights = access[request.table4.user.type];
+  if (!rights) {
+    handle(response, 'invalid_user_type');
+    return false;
+  }
+  const method = request.table4.body.method;
+  if (rights.allowed != '*' && (!rights.allowed.includes(method) || rights.notAllowed.includes(method))) {
+    handle(response, 'access_denied');
+    return false;
+  }
+  return true;
+}
 module.exports = {
   'request': (request, response) => {
     let data = '';
@@ -58,19 +69,28 @@ module.exports = {
           request.table4 = { body };
           if (body.token) {
             const token = db.tokens.get({ token: body.token });
+            if (!token) {
+              handle(response, 'wrong_token_user');
+              return;
+            }
+            token.expires_at = new Date(token.expires_at);
             const user = db.users.get({ id: token.user_id });
+            if (!user) {
+              handle(response, 'wrong_token_user');
+              return;
+            }
             request.table4.token = token;
             request.table4.user = user;
-          }
-          // before method
-          if (this.hooks[body.method]) {
-            for (let hook of this.hooks[body.method].before) {
-              hook.before(request, response);
+            if (!isAllowed(request, response)) {
+              return;
             }
           }
-          // run method
+          if (this.hooks[body.method]) {
+            for (let hook of this.hooks[body.method].before) {
+              hook(request, response);
+            }
+          }
           module.exports[body.method](request, response);
-          // after method
           if (this.hooks[body.method]) {
             for (let hook of this.hooks[body.method].after) {
               hook(request, response);
@@ -86,9 +106,6 @@ module.exports = {
       }
     });
   },
-  'hello': (request, response) => {
-    handle(response, null, 'Hi. :)');
-  },
   'signup': (request, response) => {
     const user = db.users.get({ email: request.table4.body.input.email });
     if (!user) {
@@ -96,7 +113,7 @@ module.exports = {
       const result = db.users.add({
         email: request.table4.body.input.email,
         password: hash,
-        type: 'client'
+        type: 'customer'
       });
       handle(response, null, result);
     }
@@ -106,8 +123,13 @@ module.exports = {
   },
   'login': (request, response) => {
     const user = db.users.get({ email: request.table4.body.input.email });
+    if (!user) {
+      handle(response, 'wrong_email_password');
+      return;
+    }
     const verified = passhash.verify(user.password, request.table4.body.input.password, Buffer.from(config.secret));
     if (user && verified) {
+      db.tokens.clean(user.id);
       const token = crypto.randomUUID();
       const result = db.tokens.add({
         token,
@@ -123,5 +145,25 @@ module.exports = {
     else {
       handle(response, 'wrong_email_password');
     }
+  },
+  'changePassword': (request, response) => {
+    const input = request.table4.body.input;
+    const user = request.table4.user;
+    const verified = passhash.verify(user.password, input.password, Buffer.from(config.secret));
+    if (!verified) {
+      handle(response, 'wrong_password');
+      return;
+    }
+    if (input.newPassword != input.retypedNewPassword) {
+      handle(response, 'retyped_mismatch');
+      return;
+    }
+    const hash = passhash.hash(input.newPassword, Buffer.from(config.secret));
+    const result = db.users.setPassword({
+      password: hash,
+      id: user.id
+    });
+    handle(response, null, result);
   }
 }
+loadPlugins();

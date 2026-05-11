@@ -16,12 +16,13 @@ module.exports = function (options) {
         expires_at: expires_at.toISOString()
       });
     },
-    clean: () => {
-      const query = this.db.prepare('delete from tokens where expires_at < :maxTime');
+    clean: (user_id) => {
+      const query = this.db.prepare('delete from tokens where expires_at < :maxTime or user_id = :user_id');
       return query.run({
+        user_id,
         maxTime: new Date().toISOString()
       });
-    },
+    }
   }
   this.users = {
     get: (data) => {
@@ -34,6 +35,10 @@ module.exports = function (options) {
       }
       return query.get(data);
     },
+    setPassword: (data) => {
+      const query = this.db.prepare('update users set password = :password where id = :id');
+      return query.run(data);
+    },
     add: (data) => {
       const query = this.db.prepare(`insert into users (email, password, type, created_at)
         values (:email, :password, :type, :created_at)`);
@@ -44,10 +49,10 @@ module.exports = function (options) {
     }
   }
   this.plugins = {
-    getAll: (data) => {
+    getAll: () => {
       return this.db.prepare('select * from plugins').all();
     },
-    getActive: (data) => {
+    getActive: () => {
       return this.db.prepare('select * from plugins where active = 1').all();
     }
   }
