@@ -1,7 +1,8 @@
 const config = require('./config.js');
+const { getUrl } = require('../utils.js');
 module.exports = {
-  send: async (options) => {
-    return await (await fetch(config.url, {
+  send: (options) => {
+    return getUrl(config.url, {
       method: 'post',
       headers: {
         'User-Agent': 'table4/1.0',
@@ -11,6 +12,6 @@ module.exports = {
         ...options,
         from: config.from
       })
-    })).json();
+    }, 'json');
   }
 }

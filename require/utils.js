@@ -1,4 +1,8 @@
 module.exports = {
+  getUrl: async (url, options, type) => {
+    const result = await fetch(url, options);
+    return await result[type]();
+  },
   log: (item) => {
     const now = new Date();
     process.stdout.write(`[${now.toISOString()}]: `);

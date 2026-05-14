@@ -3,12 +3,10 @@ module.exports = function (options) {
   this.db = new DatabaseSync(options.dbPath);
   this.tokens = {
     get: (data) => {
-      const query = this.db.prepare('select * from tokens where token = :token');
-      return query.get({ token: data.token });
+      return this.db.prepare('select * from tokens where token = :token').get(data);
     },
     add: (data, duration) => {
-      const query = this.db.prepare(`insert into tokens (token, user_id, expires_at)
-        values (:token, :user_id, :expires_at)`);
+      const query = this.db.prepare('insert into tokens (token, user_id, expires_at) values (:token, :user_id, :expires_at)');
       const expires_at = new Date();
       expires_at.setTime(expires_at.getTime() + duration);
       return query.run({
@@ -18,6 +16,27 @@ module.exports = function (options) {
     },
     clean: (user_id) => {
       const query = this.db.prepare('delete from tokens where expires_at < :maxTime or user_id = :user_id');
+      return query.run({
+        user_id,
+        maxTime: new Date().toISOString()
+      });
+    }
+  }
+  this.reset_codes = {
+    get: (data) => {
+      return this.db.prepare('select * from reset_codes where code = :code').get(data);
+    },
+    add: (data, duration) => {
+      const query = this.db.prepare('insert into reset_codes (code, user_id, expires_at) values (:code, :user_id, :expires_at)');
+      const expires_at = new Date();
+      expires_at.setTime(expires_at.getTime() + duration);
+      return query.run({
+        ...data,
+        expires_at: expires_at.toISOString()
+      });
+    },
+    clean: (user_id) => {
+      const query = this.db.prepare('delete from reset_codes where expires_at < :maxTime or user_id = :user_id');
       return query.run({
         user_id,
         maxTime: new Date().toISOString()
@@ -40,8 +59,7 @@ module.exports = function (options) {
       return query.run(data);
     },
     add: (data) => {
-      const query = this.db.prepare(`insert into users (email, password, type, created_at)
-        values (:email, :password, :type, :created_at)`);
+      const query = this.db.prepare('insert into users (email, password, type, created_at) values (:email, :password, :type, :created_at)');
       return query.run({
         ...data,
         created_at: new Date().toISOString()
