@@ -6,7 +6,7 @@ const access = require('./access.js');
 const { log, handle } = require('../require/utils.js');
 const email = require('./email');
 const db = new (require('./db.js'))({ dbPath: config.dbPath });
-this.lang = {}
+this.languages = {}
 this.hooks = {}
 const loadPlugins = () => {
   this.hooks = {}
@@ -37,11 +37,11 @@ const loadPlugins = () => {
   }
   log(`active plugins: ${Object.keys(this.hooks)}`);
 }
-const loadLang = () => {
-  const result = fs.readdirSync('static/lang');
+const loadLanguages = () => {
+  const result = fs.readdirSync('static/languages');
   for (let item of result) {
     const key = item.split('.')[0];
-    this.lang[key] = require(`../static/lang/${item}`);
+    this.languages[key] = require(`../static/languages/${item}`);
   }
 }
 const isAllowed = (request, response) => {
@@ -183,7 +183,7 @@ module.exports = {
       if (!result.lastInsertRowid) {
         return handle(response, result);
       }
-      const lang = this.lang[input.lang] ? this.lang[input.lang] : this.lang['en'];
+      const lang = this.languages[input.language] ? this.languages[input.language] : this.languages['en'];
       result = await email.send({
         to: input.email,
         subject: `${config.name} - ${lang.resetPassword}`,
@@ -219,7 +219,7 @@ module.exports = {
     });
     db.reset_codes.clean(resetCode.user_id);
     const user = db.users.get({ id: resetCode.user_id });
-    const lang = this.lang[input.lang] ? this.lang[input.lang] : this.lang['en'];
+    const lang = this.languages[input.language] ? this.languages[input.language] : this.languages['en'];
     now = new Date();
     await email.send({
       to: user.email,
@@ -229,5 +229,5 @@ module.exports = {
     handle(response, null, result);
   }
 }
-loadLang();
+loadLanguages();
 loadPlugins();

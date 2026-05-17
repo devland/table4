@@ -54,6 +54,13 @@ module.exports = function (options) {
       }
       return query.get(data);
     },
+    set: (data, toSet) => {
+      let fields = [];
+      for (let item of toSet) {
+        fields.push(`${item} = :${item}`);
+      }
+      return this.db.prepare(`update users set ${fields.join(', ')} where id = :id`).run(data);
+    },
     setPassword: (data) => {
       const query = this.db.prepare('update users set password = :password where id = :id');
       return query.run(data);
