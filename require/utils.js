@@ -8,15 +8,17 @@ module.exports = {
     process.stdout.write(`[${now.toISOString()}]: `);
     console.log(item);
   },
-  handle: (response, error, output, headers = {}) => {
+  handleRequest: (response, error, output, headers = {}) => {
     if (!headers['Content-Type']) {
       headers['Content-Type'] = 'application/json';
     }
     if (error) {
       response.writeHead(500, headers);
-      response.write(JSON.stringify({
+      response.write(JSON.stringify(error.stack ? {
         error: error.toString(),
         stack: error.stack
+      } : {
+        error
       }));
     }
     else {

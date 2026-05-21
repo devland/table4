@@ -1,8 +1,3 @@
-CREATE TABLE "plugins" (
-	"name"	TEXT NOT NULL,
-	"active"	TEXT NOT NULL DEFAULT 'false',
-	PRIMARY KEY("name")
-);
 CREATE TABLE "reset_codes" (
 	"code"	TEXT NOT NULL,
 	"user_id"	INTEGER NOT NULL,
@@ -16,14 +11,6 @@ CREATE TABLE "tokens" (
 	PRIMARY KEY("token")
 );
 
-CREATE TABLE "products" (
-	"id"	INTEGER NOT NULL,
-	"name"	TEXT NOT NULL UNIQUE,
-	PRIMARY KEY("id" AUTOINCREMENT)
-);
-CREATE INDEX "plugins-active" ON "plugins" (
-	"active"	ASC
-);
 CREATE INDEX "reset_codes-created_at" ON "reset_codes" (
 	"expires_at"	DESC
 );
@@ -35,20 +22,6 @@ CREATE INDEX "tokens-expires_at" ON "tokens" (
 );
 CREATE INDEX "tokens-user_id" ON "tokens" (
 	"user_id"
-);
-CREATE TABLE "users" (
-	"id"	INTEGER NOT NULL,
-	"email"	TEXT NOT NULL UNIQUE,
-	"password"	TEXT NOT NULL,
-	"type"	TEXT NOT NULL DEFAULT 'customer',
-	"created_at"	TEXT NOT NULL,
-	PRIMARY KEY("id" AUTOINCREMENT)
-);
-CREATE INDEX "users-created_at" ON "users" (
-	"created_at"	DESC
-);
-CREATE INDEX "users-type" ON "users" (
-	"type"	ASC
 );
 CREATE TABLE "tags" (
 	"for_table"	TEXT NOT NULL,
@@ -75,4 +48,31 @@ CREATE INDEX "tags-table_id_language" ON "tags" (
 );
 CREATE INDEX "tags-value" ON "tags" (
 	"value"	ASC
+);
+CREATE TABLE "users" (
+	"id"	INTEGER,
+	"email"	TEXT NOT NULL UNIQUE,
+	"password"	TEXT NOT NULL,
+	"type"	TEXT NOT NULL DEFAULT 'customer',
+	"created_at"	TEXT NOT NULL,
+	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE INDEX "users-created_at" ON "users" (
+	"created_at"	DESC
+);
+CREATE INDEX "users-type" ON "users" (
+	"type"	ASC
+);
+CREATE TABLE "products" (
+	"id"	INTEGER,
+	"name"	TEXT NOT NULL UNIQUE,
+	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE TABLE "plugins" (
+	"name"	TEXT NOT NULL,
+	"active"	TEXT NOT NULL DEFAULT 'false',
+	PRIMARY KEY("name")
+);
+CREATE INDEX "plugins-active" ON "plugins" (
+	"active"	ASC
 );

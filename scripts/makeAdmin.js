@@ -5,8 +5,9 @@ if (!user) {
   console.log('no_user');
   return;
 }
-const result = db.users.set({
+db.users.set({
   id: user.id,
   type: 'admin'
-}, ['type']);
-console.log(result);
+}, ['type']).then((result) => {
+  console.log(result);
+});

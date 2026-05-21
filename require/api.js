@@ -3,18 +3,15 @@ const fs = require('fs');
 const config = require('../config.js');
 const passhash = require('./passhash.js');
 const access = require('./access.js');
-const { log, handle } = require('../require/utils.js');
+const { log, handleRequest } = require('../require/utils.js');
 const email = require('./email');
 const db = new (require('./db.js'))({ dbPath: config.dbPath });
 this.languages = {}
 this.hooks = {}
 const loadPlugins = () => {
   this.hooks = {}
-  let result = db.plugins.getAll();
+  let result = db.plugins.getActive();
   for (let item of result) {
-    if (item.active != 'true') {
-      continue;
-    }
     const plugin = require(`../plugins/${item.name}`);
     for (let method in plugin) {
       if (!this.hooks[method]) {
@@ -47,7 +44,7 @@ const loadLanguages = () => {
 const isAllowed = (request, response) => {
   const now = new Date();
   if (request.table4.token && request.table4.token.expires_at < now) {
-    handle(response, 'token_expired');
+    handleRequest(response, 'token_expired');
     return false;
   }
   let allowed = access['everyone'];
@@ -55,12 +52,12 @@ const isAllowed = (request, response) => {
     allowed = allowed.concat(access[request.table4.user.type]);
   }
   if (!allowed) {
-    handle(response, 'invalid_user_type');
+    handleRequest(response, 'invalid_user_type');
     return false;
   }
   const method = request.table4.body.method;
-  if (allowed != '*' && !allowed.includes(method)) {
-    handle(response, 'access_denied');
+  if (!allowed.includes('*') && !allowed.includes(method)) {
+    handleRequest(response, 'access_denied');
     return false;
   }
   return true;
@@ -77,15 +74,15 @@ module.exports = {
         if (module.exports[body.method] && body.method != 'request') {
           request.table4 = { body };
           if (body.token) {
-            const token = db.tokens.get({ token: body.token });
+            const token = db.tokens.getFirst({ token: body.token });
             if (!token) {
-              handle(response, 'token_not_found');
+              handleRequest(response, 'token_not_found');
               return;
             }
             token.expires_at = new Date(token.expires_at);
-            const user = db.users.get({ id: token.user_id });
+            const user = db.users.getFirst({ id: token.user_id });
             if (!user) {
-              handle(response, 'token_user_not_found');
+              handleRequest(response, 'token_user_not_found');
               return;
             }
             request.table4.token = token;
@@ -107,16 +104,16 @@ module.exports = {
           }
         }
         else {
-          handle(response, 'method_not_found');
+          handleRequest(response, 'method_not_found');
         }
       }
       catch (error) {
-        handle(response, error);
+        handleRequest(response, error);
       }
     });
   },
   'signup': (request, response) => {
-    const user = db.users.get({ email: request.table4.body.input.email });
+    const user = db.users.getFirst({ email: request.table4.body.input.email });
     if (!user) {
       const hash = passhash.hash(request.table4.body.input.password, Buffer.from(config.secret));
       const result = db.users.add({
@@ -124,21 +121,21 @@ module.exports = {
         password: hash,
         type: 'customer'
       });
-      handle(response, null, result);
+      handleRequest(response, null, result);
     }
     else {
-      handle(response, 'email_taken');
+      handleRequest(response, 'email_taken');
     }
   },
   'login': (request, response) => {
-    const user = db.users.get({ email: request.table4.body.input.email });
+    const user = db.users.getFirst({ email: request.table4.body.input.email });
     if (!user) {
-      handle(response, 'wrong_email_password');
+      handleRequest(response, 'wrong_email_password');
       return;
     }
     const verified = passhash.verify(user.password, request.table4.body.input.password, Buffer.from(config.secret));
     if (!verified) {
-      return handle(response, 'wrong_email_password');
+      return handleRequest(response, 'wrong_email_password');
     }
     db.tokens.clean(user.id);
     const token = crypto.randomUUID();
@@ -147,20 +144,20 @@ module.exports = {
       user_id: user.id
     }, config.tokenDuration);
     if (!result.lastInsertRowid) {
-      return handle(response, result);
+      return handleRequest(response, result);
     }
-    handle(response, null, { token });
+    handleRequest(response, null, { token });
   },
   'changePassword': (request, response) => {
     const input = request.table4.body.input;
     const user = request.table4.user;
     const verified = passhash.verify(user.password, input.password, Buffer.from(config.secret));
     if (!verified) {
-      handle(response, 'wrong_password');
+      handleRequest(response, 'wrong_password');
       return;
     }
     if (input.newPassword != input.retypedNewPassword) {
-      handle(response, 'retyped_mismatch');
+      handleRequest(response, 'retyped_mismatch');
       return;
     }
     const hash = passhash.hash(input.newPassword, Buffer.from(config.secret));
@@ -168,11 +165,11 @@ module.exports = {
       password: hash,
       id: user.id
     });
-    handle(response, null, result);
+    handleRequest(response, null, result);
   },
   'sendResetCode': async (request, response) => {
     const input = request.table4.body.input;
-    const user = db.users.get({ email: input.email });
+    const user = db.users.getFirst({ email: input.email });
     if (user) {
       db.reset_codes.clean(user.id);
       const code = crypto.randomUUID();
@@ -181,7 +178,7 @@ module.exports = {
         user_id: user.id
       }, config.tokenDuration);
       if (!result.lastInsertRowid) {
-        return handle(response, result);
+        return handleRequest(response, result);
       }
       const lang = this.languages[input.language] ? this.languages[input.language] : this.languages['en'];
       result = await email.send({
@@ -190,26 +187,26 @@ module.exports = {
         text: `${lang.resetPasswordCode}: ${code}`
       });
       if (!result.id) {
-        return handle(response, result);
+        return handleRequest(response, result);
       }
     }
-    handle(response, null, 'done');
+    handleRequest(response, null, 'done');
   },
   'resetPassword': async (request, response) => {
     const input = request.table4.body.input;
     const resetCode = db.reset_codes.get({ code: input.resetCode });
     if (!resetCode) {
-      handle(response, 'reset_code_not_found');
+      handleRequest(response, 'reset_code_not_found');
       return;
     }
     let now = new Date();
     resetCode.expires_at = new Date(resetCode.expires_at);
     if (resetCode.expires_at < now) {
-      handle(response, 'reset_code_expired');
+      handleRequest(response, 'reset_code_expired');
       return;
     }
     if (input.newPassword != input.retypedNewPassword) {
-      handle(response, 'retyped_mismatch');
+      handleRequest(response, 'retyped_mismatch');
       return;
     }
     const hash = passhash.hash(input.newPassword, Buffer.from(config.secret));
@@ -218,7 +215,7 @@ module.exports = {
       id: resetCode.user_id
     });
     db.reset_codes.clean(resetCode.user_id);
-    const user = db.users.get({ id: resetCode.user_id });
+    const user = db.users.getFirst({ id: resetCode.user_id });
     const lang = this.languages[input.language] ? this.languages[input.language] : this.languages['en'];
     now = new Date();
     await email.send({
@@ -226,7 +223,43 @@ module.exports = {
       subject: `${config.name} - ${lang.passwordChanged}`,
       text: `${lang.passwordChanged} @ ${now.toString()}`
     });
-    handle(response, null, result);
+    handleRequest(response, null, result);
+  },
+  'getUsers': (request, response) => {
+    const input = request.table4.body.input;
+    const result = db.users.get({
+      id: input.id,
+      email: input.email,
+      type: input.type
+    }, input.limit, input.offset);
+    handleRequest(response, null, result);
+  },
+  'getTags': (request, response) => {
+    const input = request.table4.body.input;
+    const result = db.tags.get({
+      for_table: input.for_table,
+      for_id: input.for_id,
+      key: input.key,
+      language: input.language
+    });
+    handleRequest(response, null, result);
+  },
+  'updateTags': (request, response) => {
+    const input = request.table4.body.input;
+    const data = [];
+    for (let item of input) {
+      data.push({
+        for_table: item.for_table,
+        for_id: item.for_id,
+        key: item.key,
+        value: item.value,
+        language: item.language,
+        one_per: item.one_per,
+        remove: item.remove
+      });
+    }
+    const result = db.tags.update(data);
+    handleRequest(response, null, result);
   }
 }
 loadLanguages();
