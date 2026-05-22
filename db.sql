@@ -23,32 +23,6 @@ CREATE INDEX "tokens-expires_at" ON "tokens" (
 CREATE INDEX "tokens-user_id" ON "tokens" (
 	"user_id"
 );
-CREATE TABLE "tags" (
-	"for_table"	TEXT NOT NULL,
-	"for_id"	INTEGER NOT NULL,
-	"key"	TEXT NOT NULL,
-	"value"	TEXT NOT NULL,
-	"language"	TEXT NOT NULL DEFAULT 'en',
-	"one_per"	TEXT NOT NULL DEFAULT 'false',
-	PRIMARY KEY("for_table","for_id","key","language")
-);
-CREATE INDEX "tags-one_per" ON "tags" (
-	"one_per"
-);
-CREATE INDEX "tags-table_id_key_language" ON "tags" (
-	"for_table"	ASC,
-	"for_id"	DESC,
-	"key"	ASC,
-	"language"	ASC
-);
-CREATE INDEX "tags-table_id_language" ON "tags" (
-	"for_table"	ASC,
-	"for_id"	DESC,
-	"language"	ASC
-);
-CREATE INDEX "tags-value" ON "tags" (
-	"value"	ASC
-);
 CREATE TABLE "users" (
 	"id"	INTEGER,
 	"email"	TEXT NOT NULL UNIQUE,
@@ -75,4 +49,34 @@ CREATE TABLE "plugins" (
 );
 CREATE INDEX "plugins-active" ON "plugins" (
 	"active"	ASC
+);
+CREATE TABLE "tags" (
+	"for_table"	TEXT NOT NULL,
+	"for_id"	INTEGER NOT NULL,
+	"key"	TEXT NOT NULL,
+	"language"	TEXT NOT NULL DEFAULT 'en',
+	"value"	TEXT NOT NULL,
+	PRIMARY KEY("for_table","for_id","key","language")
+);
+CREATE INDEX "tags-table_id_key_language" ON "tags" (
+	"for_table"	ASC,
+	"for_id"	DESC,
+	"key"	ASC,
+	"language"	ASC
+);
+CREATE INDEX "tags-table_id_language" ON "tags" (
+	"for_table"	ASC,
+	"for_id"	DESC,
+	"language"	ASC
+);
+CREATE INDEX "tags-value" ON "tags" (
+	"value"	ASC
+);
+CREATE TABLE "tag_keys" (
+	"key"	TEXT,
+	"one_per"	TEXT NOT NULL DEFAULT 'false',
+	PRIMARY KEY("key")
+);
+CREATE INDEX "teg_keys-key" ON "tag_keys" (
+	"key"
 );

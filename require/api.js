@@ -254,11 +254,23 @@ module.exports = {
         key: item.key,
         value: item.value,
         language: item.language,
-        one_per: item.one_per,
         remove: item.remove
       });
     }
     const result = db.tags.update(data);
+    handleRequest(response, null, result);
+  },
+  'updateTagKeys': (request, response) => {
+    const input = request.table4.body.input;
+    const data = [];
+    for (let item of input) {
+      data.push({
+        key: item.key,
+        one_per: item.one_per,
+        remove: item.remove
+      });
+    }
+    const result = db.tagKeys.update(data);
     handleRequest(response, null, result);
   }
 }

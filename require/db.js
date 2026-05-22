@@ -11,6 +11,7 @@ module.exports = function (options) {
     }
     return fields;
   }
+  const self = this;
   this.tokens = {
     getFirst: function (data) {
       return this.db.prepare('select * from tokens where token = :token').get(data);
@@ -90,95 +91,21 @@ module.exports = function (options) {
       // to do
     }
   }
+  this.tagKeys = {
+    get: function () {
+      return this.db.prepare('select * from tag_keys').all();
+    },
+    update: function (data) {
+      return self.generic.update('tag_keys', ['key'], ['one_per'], data);
+    }
+  }
   this.tags = {
     get: function (data) {
       let fields = getFieldAssignments(data);
       return this.db.prepare(`select * from tags where ${fields.join(' and ')}`).all(data);
     },
     update: function (data) {
-      try {
-        this.db.exec('begin');
-        let where = [];
-        let params = {}
-        let index = 0;
-        const output = {}
-        for (let item of data) {
-          where.push(`(for_table = :${index}_for_table and for_id = :${index}_for_id and key = :${index}_key and language = :${index}_language)`);
-          params[`${index}_for_table`] = item.for_table;
-          params[`${index}_for_id`] = item.for_id;
-          params[`${index}_key`] = item.key;
-          params[`${index}_language`] = item.language;
-          index++;
-        }
-        const existing = this.db.prepare(`select * from tags where ${where.join(' or ')}`).all(params);
-        const insert = [];
-        const insertParams = {}
-        const update = [];
-        const remove = [];
-        const removeParams = {}
-        index = 0;
-        for (let item of data) {
-          let exists = false;
-          for (let entry of existing) {
-            if (item.for_table == entry.for_table && item.for_id == entry.for_id && item.key == entry.key && item.language == entry.language) {
-              exists = true;
-              continue;
-            }
-          }
-          if (exists) {
-            if (item.remove) {
-              remove.push(`(for_table = :${index}_for_table and for_id = :${index}_for_id and key = :${index}_key and language = :${index}_language)`);
-              removeParams[`${index}_for_table`] = item.for_table;
-              removeParams[`${index}_for_id`] = item.for_id;
-              removeParams[`${index}_key`] = item.key;
-              removeParams[`${index}_language`] = item.language;
-              delete item.remove;
-            }
-            else {
-              update.push({
-                query: `update tags set value = :value, one_per = :one_per where for_table = :for_table and for_id =:for_id and key = :key and language = :language`,
-                params: {
-                  for_table: item.for_table,
-                  for_id: item.for_id,
-                  key: item.key,
-                  value: item.value,
-                  language: item.language,
-                  one_per: item.one_per
-                }
-              });
-            }
-          }
-          else if (!item.remove) {
-            insert.push(`(:${index}_for_table, :${index}_for_id, :${index}_key, :${index}_value, :${index}_language, :${index}_one_per)`);
-            insertParams[`${index}_for_table`] = item.for_table;
-            insertParams[`${index}_for_id`] = item.for_id;
-            insertParams[`${index}_key`] = item.key;
-            insertParams[`${index}_value`] = item.value;
-            insertParams[`${index}_language`] = item.language;
-            insertParams[`${index}_one_per`] = item.one_per;
-          }
-          index++;
-        }
-        if (insert.length) {
-          output.inserted = this.db.prepare(`insert into tags (for_table, for_id, key, value, language, one_per) values ${insert.join(', ')}`).run(insertParams);
-        }
-        if (update.length) {
-          output.updated = [];
-          for (let item of update) {
-            output.updated = output.updated.concat(this.db.prepare(item.query).run(item.params));
-          }
-        }
-        if (remove.length) {
-          output.removed = this.db.prepare(`delete from tags where ${remove.join(' or ')}`).run(removeParams);
-        }
-        output.tags = this.db.prepare(`select * from tags where ${where.join(' or ')}`).all(params);
-        this.db.exec('commit');
-        return output;
-      }
-      catch (error) {
-        this.db.exec('rollback');
-        throw error;
-      }
+      return self.generic.update('tags', ['for_table', 'for_id', 'key', 'language'], ['value'], data);
     }
   }
   this.plugins = {
@@ -187,6 +114,107 @@ module.exports = function (options) {
     },
     getActive: function () {
       return this.db.prepare('select * from plugins where active = \'true\'').all();
+    }
+  }
+  this.generic = {
+    update: function (table, pkColumns, toSetColumns, data) {
+      try {
+        this.db.exec('begin');
+        let selectWhere = [];
+        let selectParams = {}
+        const allColumns = pkColumns.concat(toSetColumns);
+        let index = 0;
+        const output = {}
+        const computeClause = (columns, prefix = '', separator, options = {}) => {
+          let clauses = [];
+          const params = [];
+          for (let column of columns) {
+            const columnEquals = !options.noColumn ? `${column} = ` : '';
+            clauses.push(`${columnEquals}:${prefix != '' ? prefix + '_' : ''}${column}`);
+          }
+          if (options.noBrackets) {
+            return clauses.join(separator);
+          }
+          else {
+            return `(${clauses.join(separator)})`;
+          }
+        }
+        const computeParams = (columns, data, prefix = '') => {
+          const params = {}
+          for (let column of columns) {
+            params[`${prefix != '' ? prefix + '_' : ''}${column}`] = data[column];
+          }
+          return params;
+        }
+        for (let item of data) {
+          selectWhere.push(computeClause(pkColumns, index, ' and '));
+          selectParams = { ...selectParams, ...computeParams(pkColumns, item, index) };
+          index++;
+        }
+        const existing = this.db.prepare(`select * from ${table} where ${selectWhere.join(' or ')}`).all(selectParams);
+        const insert = [];
+        let insertParams = {}
+        const update = [];
+        const remove = [];
+        let removeParams = {}
+        index = 0;
+        for (let item of data) {
+          let exists = false;
+          for (let entry of existing) {
+            let matchingCols = 0;
+            for (let column of pkColumns) {
+              if (item[column] == entry[column]) {
+                matchingCols++;
+              }
+            }
+            if (pkColumns.length == matchingCols) {
+              exists = true;
+              continue;
+            }
+          }
+          if (exists) {
+            if (item.remove) {
+              delete item.remove;
+              remove.push(computeClause(pkColumns, index, ' and '));
+              removeParams = { ...removeParams, ...computeParams(pkColumns, item, index) };
+            }
+            else {
+              delete item.remove;
+              const updateSet = computeClause(toSetColumns, '', ', ', { noBrackets: true });
+              const updateWhere = computeClause(pkColumns, '', ' and ');
+              update.push({
+                query: `update ${table} set ${updateSet} where ${updateWhere}`,
+                params: computeParams(allColumns, item)
+              });
+            }
+          }
+          else if (!item.remove) {
+            delete item.remove;
+            insert.push(computeClause(allColumns, index, ', ', { noColumn: true }));
+            insertParams = { ...insertParams, ...computeParams(allColumns, item, index) };
+          }
+          index++;
+        }
+        if (insert.length) {
+          output.inserted = this.db.prepare(`insert into ${table} (${allColumns.join(', ')}) values ${insert.join(', ')}`).run(insertParams);
+        }
+        if (update.length) {
+          output.updated = [];
+          for (let item of update) {
+            output.updated = output.updated.concat(this.db.prepare(item.query).run(item.params));
+          }
+        }
+        if (remove.length) {
+          output.removed = this.db.prepare(`delete from ${table} where ${remove.join(' or ')}`).run(removeParams);
+        }
+        output.tags = this.db.prepare(`select * from ${table} where ${selectWhere.join(' or ')}`).all(selectParams);
+        this.db.exec('commit');
+        return output;
+      }
+      catch (error) {
+        this.db.exec('rollback');
+        throw error;
+      }
     }
   }
   // run each method within its own db instance
