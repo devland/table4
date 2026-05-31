@@ -6,6 +6,7 @@ module.exports = {
     'changePassword'
   ],
   everyone: [
+    'hello',
     'signup',
     'login',
     'sendResetCode',

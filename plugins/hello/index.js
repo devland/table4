@@ -1,8 +1,8 @@
-const { handle } = require('../../require/utils.js');
+const { handleRequest } = require('../../require/utils.js');
 module.exports = {
   hello: {
     main: (request, response) => {
-      handle(response, null, 'Hi. :)');
+      handleRequest(response, null, 'Hi. :)');
     }
   }
 }

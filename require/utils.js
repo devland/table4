@@ -15,7 +15,7 @@ module.exports = {
     if (error) {
       response.writeHead(500, headers);
       response.write(JSON.stringify(error.stack ? {
-        error: error.toString(),
+        error: JSON.parse(JSON.stringify(error)),
         stack: error.stack
       } : {
         error

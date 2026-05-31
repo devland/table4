@@ -1,5 +1,8 @@
 module.exports = function (options) {
   const { DatabaseSync } = require('node:sqlite');
+  const clean = (input) => {
+    return input.replaceAll(/[^a-z0-9_]/mgi, '');
+  }
   const getFieldAssignments = (data) => {
     const fields = [];
     for (let key of Object.keys(data)) {
@@ -7,7 +10,8 @@ module.exports = function (options) {
         delete data[key];
         continue;
       }
-      fields.push(`${key} = :${key}`);
+      const name = clean(key);
+      fields.push(`"${name}" = :${name}`);
     }
     return fields;
   }
@@ -70,10 +74,7 @@ module.exports = function (options) {
       return this.db.prepare(`select id, email, type, created_at from users where ${fields.join(' and ')} limit :limit offset :offset`).all({ ...data, limit, offset });
     },
     set: function (data, toSet) {
-      let fields = [];
-      for (let item of toSet) {
-        fields.push(`${item} = :${item}`);
-      }
+      let fields = getFieldAssignments(data);
       return this.db.prepare(`update users set ${fields.join(', ')} where id = :id`).run(data);
     },
     setPassword: function (data) {
@@ -96,7 +97,7 @@ module.exports = function (options) {
       return this.db.prepare('select * from tag_keys').all();
     },
     update: function (data) {
-      return self.generic.update('tag_keys', ['key'], ['one_per'], data);
+      return self.generic.update('tag_keys', ['key'], ['active'], data);
     }
   }
   this.tags = {
@@ -109,11 +110,94 @@ module.exports = function (options) {
     }
   }
   this.plugins = {
-    getAll: function () {
+    get: function () {
       return this.db.prepare('select * from plugins').all();
     },
     getActive: function () {
-      return this.db.prepare('select * from plugins where active = \'true\'').all();
+      return this.db.prepare('select * from plugins where active = :active').all({ active: 'yes' });
+    },
+    set: function (data) {
+      return this.db.prepare('update plugins set active = :active where name = :name').run(data);
+    },
+    add: function (data) {
+      return this.db.prepare('insert into plugins (name, active) values (:name, :active)').run(data);
+    },
+    remove: function (data) {
+      return this.db.prepare('delete from plugins where name = :name').run(data);
+    }
+  }
+  this.products = {
+    get: function (data) {
+      let fields = getFieldAssignments(data);
+      return this.db.prepare(`select * from products where ${fields.join(' and ')}`).all(data);
+    },
+    find: function(data) {
+      if (!['tags.value', 'prices.price'].includes(data.orderBy)) {
+        throw 'invalid_orderBy';
+        return;
+      }
+      if (!['asc', 'desc'].includes(data.orderWay)) {
+        throw 'invalid_orderWay';
+        return;
+      }
+      let where = [];
+      let params = {}
+      const operators = ['=', '<', '>', '<=', '>=', 'like'];
+      let index = 0;
+      for (let item of data.where) {
+        if (!operators.includes(item.operator)) {
+          throw 'invalid_operator';
+          return;
+        }
+        const name = `var_${index}`;
+        let column = '';
+        if (['tags', 'prices'].includes(item.type)) {
+          column = `"${clean(item.type)}".`;
+        }
+        column += `"${clean(item.key)}"`
+        where.push(`${column} ${item.operator} :${name}`);
+        params[name] = item.value;
+        index++;
+      }
+      const ids = this.db.prepare(`select for_id as id from tags inner join prices on product_id = for_id where currency = :currency and for_table = 'products' and ${where.join(' and ')} order by ${data.orderBy} ${data.orderWay} limit :limit offset :offset`).all({
+        currency: data.currency,
+        limit: data.limit,
+        offset: data.offset,
+        ...params
+      });
+      return ids;
+    },
+    set: function (data) {
+      // to do
+    },
+    add: function (data) {
+      // to do
+    },
+    remove: function (data) {
+      // to do
+    }
+  }
+  this.currencies = {
+    get: function () {
+      return this.db.prepare('select * from currencies').all();
+    },
+    set: function (data) {
+      return this.db.prepare('update currencies set active = :active where code = :code').run(data);
+    },
+    add: function (data) {
+      return this.db.prepare('insert into currencies (code, active) values (:code, :active)').run(data);
+    },
+    remove: function (data) {
+      return this.db.prepare('delete from currencies where code = :code').run(data);
+    }
+  }
+  this.prices = {
+    get: function (data) {
+      let fields = getFieldAssignments(data);
+      return this.db.prepare(`select * from prices where ${fields.join(' and ')}`).all(data);
+    },
+    update: function (data) {
+      return self.generic.update('prices', ['product_id', 'currency'], ['value'], data);
     }
   }
   this.generic = {
@@ -124,12 +208,16 @@ module.exports = function (options) {
         let selectParams = {}
         const allColumns = pkColumns.concat(toSetColumns);
         let index = 0;
-        const output = {}
+        const output = {
+          inserted: [],
+          updated: [],
+          removed: []
+        }
         const computeClause = (columns, prefix = '', separator, options = {}) => {
           let clauses = [];
           const params = [];
           for (let column of columns) {
-            const columnEquals = !options.noColumn ? `${column} = ` : '';
+            const columnEquals = options.justValues ? '' : `${column} = `;
             clauses.push(`${columnEquals}:${prefix != '' ? prefix + '_' : ''}${column}`);
           }
           if (options.noBrackets) {
@@ -177,6 +265,7 @@ module.exports = function (options) {
               delete item.remove;
               remove.push(computeClause(pkColumns, index, ' and '));
               removeParams = { ...removeParams, ...computeParams(pkColumns, item, index) };
+              output.removed.push(item);
             }
             else {
               delete item.remove;
@@ -186,26 +275,27 @@ module.exports = function (options) {
                 query: `update ${table} set ${updateSet} where ${updateWhere}`,
                 params: computeParams(allColumns, item)
               });
+              output.updated.push(item);
             }
           }
           else if (!item.remove) {
             delete item.remove;
-            insert.push(computeClause(allColumns, index, ', ', { noColumn: true }));
+            insert.push(computeClause(allColumns, index, ', ', { justValues: true }));
             insertParams = { ...insertParams, ...computeParams(allColumns, item, index) };
+            output.inserted.push(item);
           }
           index++;
         }
         if (insert.length) {
-          output.inserted = this.db.prepare(`insert into ${table} (${allColumns.join(', ')}) values ${insert.join(', ')}`).run(insertParams);
+          this.db.prepare(`insert into ${table} (${allColumns.join(', ')}) values ${insert.join(', ')}`).run(insertParams);
         }
         if (update.length) {
-          output.updated = [];
           for (let item of update) {
-            output.updated = output.updated.concat(this.db.prepare(item.query).run(item.params));
+            this.db.prepare(item.query).run(item.params);
           }
         }
         if (remove.length) {
-          output.removed = this.db.prepare(`delete from ${table} where ${remove.join(' or ')}`).run(removeParams);
+          this.db.prepare(`delete from ${table} where ${remove.join(' or ')}`).run(removeParams);
         }
         output.tags = this.db.prepare(`select * from ${table} where ${selectWhere.join(' or ')}`).all(selectParams);
         this.db.exec('commit');

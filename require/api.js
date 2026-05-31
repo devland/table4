@@ -272,6 +272,33 @@ module.exports = {
     }
     const result = db.tagKeys.update(data);
     handleRequest(response, null, result);
+  },
+  'getPrices': (request, response) => {
+    const input = request.table4.body.input;
+    const result = db.prices.get({
+      currency: input.currency,
+      product_id: input.product_id
+    });
+    handleRequest(response, null, result);
+  },
+  'updatePrices': (request, response) => {
+    const input = request.table4.body.input;
+    const data = [];
+    for (let item of input) {
+      data.push({
+        currency: item.currency,
+        product_id: item.product_id,
+        value: item.value,
+        remove: item.remove
+      });
+    }
+    const result = db.prices.update(data);
+    handleRequest(response, null, result);
+  },
+  'findProducts': (request, response) => {
+    const input = request.table4.body.input;
+    const result = db.products.find(input);
+    handleRequest(response, null, result);
   }
 }
 loadLanguages();

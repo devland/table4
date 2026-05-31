@@ -10,7 +10,28 @@ CREATE TABLE "tokens" (
 	"expires_at"	TEXT NOT NULL,
 	PRIMARY KEY("token")
 );
+CREATE TABLE "users" (
+	"id"	INTEGER,
+	"email"	TEXT NOT NULL UNIQUE,
+	"password"	TEXT NOT NULL,
+	"type"	TEXT NOT NULL DEFAULT 'customer',
+	"created_at"	TEXT NOT NULL,
+	PRIMARY KEY("id" AUTOINCREMENT)
+);
 
+CREATE TABLE "products" (
+	"id"	INTEGER,
+	"name"	TEXT NOT NULL UNIQUE,
+	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE TABLE "tags" (
+	"for_table"	TEXT NOT NULL,
+	"for_id"	INTEGER NOT NULL,
+	"key"	TEXT NOT NULL,
+	"language"	TEXT NOT NULL DEFAULT 'en',
+	"value"	TEXT NOT NULL,
+	PRIMARY KEY("for_table","for_id","key","language")
+);
 CREATE INDEX "reset_codes-created_at" ON "reset_codes" (
 	"expires_at"	DESC
 );
@@ -23,40 +44,11 @@ CREATE INDEX "tokens-expires_at" ON "tokens" (
 CREATE INDEX "tokens-user_id" ON "tokens" (
 	"user_id"
 );
-CREATE TABLE "users" (
-	"id"	INTEGER,
-	"email"	TEXT NOT NULL UNIQUE,
-	"password"	TEXT NOT NULL,
-	"type"	TEXT NOT NULL DEFAULT 'customer',
-	"created_at"	TEXT NOT NULL,
-	PRIMARY KEY("id" AUTOINCREMENT)
-);
 CREATE INDEX "users-created_at" ON "users" (
 	"created_at"	DESC
 );
 CREATE INDEX "users-type" ON "users" (
 	"type"	ASC
-);
-CREATE TABLE "products" (
-	"id"	INTEGER,
-	"name"	TEXT NOT NULL UNIQUE,
-	PRIMARY KEY("id" AUTOINCREMENT)
-);
-CREATE TABLE "plugins" (
-	"name"	TEXT NOT NULL,
-	"active"	TEXT NOT NULL DEFAULT 'false',
-	PRIMARY KEY("name")
-);
-CREATE INDEX "plugins-active" ON "plugins" (
-	"active"	ASC
-);
-CREATE TABLE "tags" (
-	"for_table"	TEXT NOT NULL,
-	"for_id"	INTEGER NOT NULL,
-	"key"	TEXT NOT NULL,
-	"language"	TEXT NOT NULL DEFAULT 'en',
-	"value"	TEXT NOT NULL,
-	PRIMARY KEY("for_table","for_id","key","language")
 );
 CREATE INDEX "tags-table_id_key_language" ON "tags" (
 	"for_table"	ASC,
@@ -69,14 +61,24 @@ CREATE INDEX "tags-table_id_language" ON "tags" (
 	"for_id"	DESC,
 	"language"	ASC
 );
-CREATE INDEX "tags-value" ON "tags" (
+CREATE INDEX "tags-key_value" ON "tags" (
+	"key"	ASC,
 	"value"	ASC
 );
 CREATE TABLE "tag_keys" (
 	"key"	TEXT,
-	"one_per"	TEXT NOT NULL DEFAULT 'false',
+	"active"	TEXT DEFAULT 'yes',
 	PRIMARY KEY("key")
 );
-CREATE INDEX "teg_keys-key" ON "tag_keys" (
-	"key"
+CREATE INDEX "tag_keys-key" ON "tag_keys" (
+	"key"	ASC,
+	"active"
+);
+CREATE TABLE "plugins" (
+	"name"	TEXT NOT NULL,
+	"active"	TEXT NOT NULL DEFAULT 'no',
+	PRIMARY KEY("name")
+);
+CREATE INDEX "plugins-active" ON "plugins" (
+	"active"	ASC
 );
