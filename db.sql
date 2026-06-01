@@ -19,11 +19,6 @@ CREATE TABLE "users" (
 	PRIMARY KEY("id" AUTOINCREMENT)
 );
 
-CREATE TABLE "products" (
-	"id"	INTEGER,
-	"name"	TEXT NOT NULL UNIQUE,
-	PRIMARY KEY("id" AUTOINCREMENT)
-);
 CREATE TABLE "tags" (
 	"for_table"	TEXT NOT NULL,
 	"for_id"	INTEGER NOT NULL,
@@ -35,14 +30,8 @@ CREATE TABLE "tags" (
 CREATE INDEX "reset_codes-created_at" ON "reset_codes" (
 	"expires_at"	DESC
 );
-CREATE INDEX "reset_codes-user_id" ON "reset_codes" (
-	"user_id"
-);
 CREATE INDEX "tokens-expires_at" ON "tokens" (
 	"expires_at"	DESC
-);
-CREATE INDEX "tokens-user_id" ON "tokens" (
-	"user_id"
 );
 CREATE INDEX "users-created_at" ON "users" (
 	"created_at"	DESC
@@ -65,15 +54,6 @@ CREATE INDEX "tags-key_value" ON "tags" (
 	"key"	ASC,
 	"value"	ASC
 );
-CREATE TABLE "tag_keys" (
-	"key"	TEXT,
-	"active"	TEXT DEFAULT 'yes',
-	PRIMARY KEY("key")
-);
-CREATE INDEX "tag_keys-key" ON "tag_keys" (
-	"key"	ASC,
-	"active"
-);
 CREATE TABLE "plugins" (
 	"name"	TEXT NOT NULL,
 	"active"	TEXT NOT NULL DEFAULT 'no',
@@ -81,4 +61,98 @@ CREATE TABLE "plugins" (
 );
 CREATE INDEX "plugins-active" ON "plugins" (
 	"active"	ASC
+);
+CREATE TABLE "currencies" (
+	"code"	TEXT,
+	"active"	TEXT DEFAULT 'no',
+	PRIMARY KEY("code")
+);
+CREATE TABLE "prices" (
+	"product_id"	INTEGER NOT NULL,
+	"currency"	TEXT NOT NULL,
+	"value"	REAL NOT NULL,
+	PRIMARY KEY("product_id","currency")
+);
+CREATE TABLE "products" (
+	"id"	INTEGER,
+	"stock"	INTEGER NOT NULL DEFAULT 0,
+	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE TABLE "order_history" (
+	"order_id"	INTEGER NOT NULL,
+	"status"	TEXT NOT NULL,
+	"note"	TEXT,
+	"updated_at"	TEXT NOT NULL
+);
+CREATE INDEX "order_history-order_id_updated_at" ON "order_history" (
+	"order_id"	ASC,
+	"updated_at"	DESC
+);
+CREATE INDEX "order_history-status_updated_at" ON "order_history" (
+	"status"	ASC,
+	"updated_at"	DESC
+);
+CREATE INDEX "reset_codes-user_id" ON "reset_codes" (
+	"user_id"	ASC
+);
+CREATE INDEX "tokens-user_id" ON "tokens" (
+	"user_id"	ASC
+);
+CREATE INDEX "currencies-active" ON "currencies" (
+	"active"	ASC
+);
+CREATE TABLE "tag_keys" (
+	"for_table"	TEXT,
+	"key"	TEXT,
+	"active"	TEXT DEFAULT 'no',
+	PRIMARY KEY("for_table","key")
+);
+CREATE INDEX "tag_keys-active" ON "tag_keys" (
+	"active"	ASC
+);
+CREATE TABLE "order_flows" (
+	"id"	INTEGER,
+	"tree"	TEXT NOT NULL DEFAULT '{}',
+	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE TABLE "order_items" (
+	"order_id"	INTEGER,
+	"product_id"	INTEGER,
+	"quantity"	INTEGER NOT NULL,
+	"unit_price"	INTEGER NOT NULL,
+	PRIMARY KEY("order_id","product_id")
+);
+CREATE INDEX "order_items-order_id" ON "order_items" (
+	"order_id"	ASC
+);
+CREATE INDEX "order_items-product_id" ON "order_items" (
+	"product_id"	ASC
+);
+CREATE INDEX "order_items-quantity" ON "order_items" (
+	"quantity"	ASC
+);
+CREATE TABLE "orders" (
+	"id"	INTEGER,
+	"flow_id"	INTEGER NOT NULL,
+	"user_id"	INTEGER,
+	"token"	TEXT,
+	"currency"	TEXT NOT NULL,
+	"status"	TEXT NOT NULL,
+	"note"	TEXT,
+	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE INDEX "orders-flow_id" ON "orders" (
+	"flow_id"	ASC
+);
+CREATE INDEX "orders-status" ON "orders" (
+	"status"	ASC
+);
+CREATE INDEX "orders-token" ON "orders" (
+	"token"	ASC
+);
+CREATE INDEX "orders-user_id" ON "orders" (
+	"user_id"	ASC
+);
+CREATE INDEX "orders-currency" ON "orders" (
+	"currency"	ASC
 );
