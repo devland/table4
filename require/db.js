@@ -140,26 +140,55 @@ module.exports = function (options) {
         throw 'invalid_orderWay';
         return;
       }
-      let where = [];
+      if (!data.where.length) {
+        const ids = this.db.prepare(`select for_id as id from tags group by for_id order by ${data.orderBy} ${data.orderWay} limit :limit offset :offset`).all({
+          limit: data.limit,
+          offset: data.offset
+        });
+        return ids;
+      }
+      let where = '';
       let params = {}
+      const tables = ['tags', 'prices'];
+      const logicOperators = ['and', 'or'];
       const operators = ['=', '<', '>', '<=', '>=', 'like'];
       let index = 0;
+      let tagClauseCount = 0;
       for (let item of data.where) {
-        if (!operators.includes(item.operator)) {
+        if (!logicOperators.includes(item.groupOperator) || !logicOperators.includes(item.clauseOperator)) {
           throw 'invalid_operator';
           return;
         }
-        const name = `var_${index}`;
-        let column = '';
-        if (['tags', 'prices'].includes(item.type)) {
-          column = `"${clean(item.type)}".`;
+        const groupClauses = [];
+        for (let clause of item.clauses) {
+          if (!operators.includes(clause.operator)) {
+            throw 'invalid_operator';
+            return;
+          }
+          const name = `var_${index}`;
+          let column = '';
+          if (tables.includes(clause.type)) {
+            column = `"${clean(clause.type)}".`;
+          }
+          column += `"${clean(clause.key)}"`;
+          if (clause.number) {
+            column = `cast(${column} as numeric)`;
+          }
+          groupClauses.push(`${column} ${clause.operator} :${name}`);
+          params[name] = clause.value;
+          index++;
+          if (clause.type == 'tags' && clause.key == 'key') {
+            tagClauseCount++;
+          }
         }
-        column += `"${clean(item.key)}"`
-        where.push(`${column} ${item.operator} :${name}`);
-        params[name] = item.value;
-        index++;
+        const groupWhere = groupClauses.join(` ${item.clauseOperator} `);
+        const operator = where ? ` ${item.groupOperator} ` : '';
+        const groupStart = item.groupStart ? '( ' : '';
+        const groupEnd = item.groupEnd ? ' )' : '';
+        where += `${groupStart}${operator}( ${groupWhere} )${groupEnd}`;
       }
-      const ids = this.db.prepare(`select for_id as id from tags inner join prices on product_id = for_id where currency = :currency and for_table = 'products' and ${where.join(' and ')} order by ${data.orderBy} ${data.orderWay} limit :limit offset :offset`).all({
+      const query = `select for_id as id from tags inner join prices on product_id = for_id where currency = :currency and for_table = 'products' and ${where} group by for_id having count(for_id) = ${tagClauseCount} order by ${data.orderBy} ${data.orderWay} limit :limit offset :offset`;
+      const ids = this.db.prepare(query).all({
         currency: data.currency,
         limit: data.limit,
         offset: data.offset,

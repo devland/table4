@@ -156,3 +156,9 @@ CREATE INDEX "orders-user_id" ON "orders" (
 CREATE INDEX "orders-currency" ON "orders" (
 	"currency"	ASC
 );
+CREATE TABLE "cart" (
+	"user_id"	INTEGER,
+	"product_id"	INTEGER,
+	"quantity"	INTEGER NOT NULL DEFAULT 0,
+	PRIMARY KEY("user_id","product_id")
+);
