@@ -1,7 +1,12 @@
 module.exports = function (options) {
   const { DatabaseSync } = require('node:sqlite');
   const clean = (input) => {
-    return input.replaceAll(/[^a-z0-9_]/mgi, '');
+    if (isNaN(input)) {
+      return input.replaceAll(/[^a-z0-9_]/mgi, '');
+    }
+    else {
+      return parseFloat(input);
+    }
   }
   const getFieldAssignments = (data) => {
     const fields = [];
@@ -128,10 +133,18 @@ module.exports = function (options) {
   }
   this.products = {
     get: function (data) {
-      let fields = getFieldAssignments(data);
-      return this.db.prepare(`select * from products where ${fields.join(' and ')}`).all(data);
+      let where = '';
+      if (data.ids && data.ids.length) {
+        for (let i = 0; i < data.ids.length; i++) {
+          data.ids[i] = clean(data.ids[i]);
+        }
+        where = ` where id in (${data.ids.join(', ')}) `;
+        delete data.ids;
+      }
+      const products = this.db.prepare(`select * from products${where} order by id asc limit :limit offset :offset`).all(data);
+      return self.generic.getTags('products', products);
     },
-    find: function(data) {
+    find: function (data) {
       if (!['tags.value', 'prices.price'].includes(data.orderBy)) {
         throw 'invalid_orderBy';
         return;
@@ -196,14 +209,16 @@ module.exports = function (options) {
       });
       return ids;
     },
-    set: function (data) {
-      // to do
+    update: function (data) {
+      return self.generic.update('products', ['id'], ['stock'], data);
+    }
+  }
+  this.cart = {
+    get: function (data) {
+      return this.db.prepare('select * from cart where user_id = :user_id').all(data);
     },
-    add: function (data) {
-      // to do
-    },
-    remove: function (data) {
-      // to do
+    update: function (data) {
+      return self.generic.update('cart', ['user_id', 'product_id'], ['quantity'], data);
     }
   }
   this.currencies = {
@@ -326,7 +341,7 @@ module.exports = function (options) {
         if (remove.length) {
           this.db.prepare(`delete from ${table} where ${remove.join(' or ')}`).run(removeParams);
         }
-        output.tags = this.db.prepare(`select * from ${table} where ${selectWhere.join(' or ')}`).all(selectParams);
+        output.entries = this.db.prepare(`select * from ${table} where ${selectWhere.join(' or ')}`).all(selectParams);
         this.db.exec('commit');
         return output;
       }
@@ -334,6 +349,20 @@ module.exports = function (options) {
         this.db.exec('rollback');
         throw error;
       }
+    },
+    getTags: function (table, entries) {
+      const ids = [];
+      const map = {};
+      for (let i = 0; i < entries.length; i++) {
+        entries[i].tags = {};
+        ids.push(entries[i].id);
+        map[entries[i].id] = i;
+      }
+      const tags = this.db.prepare(`select * from tags where for_table = :table and for_id in (${ids.join(', ')}) order by for_id asc`).all({ table });
+      for (let item of tags) {
+        entries[map[item.for_id]].tags[item.key] = isNaN(item.value) ? item.value : parseFloat(item.value);
+      }
+      return entries;
     }
   }
   // run each method within its own db instance

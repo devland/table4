@@ -295,9 +295,29 @@ module.exports = {
     const result = db.prices.update(data);
     handleRequest(response, null, result);
   },
+  'getProducts': (request, response) => {
+    const input = request.table4.body.input;
+    const result = db.products.get(input);
+    handleRequest(response, null, result);
+  },
   'findProducts': (request, response) => {
     const input = request.table4.body.input;
     const result = db.products.find(input);
+    handleRequest(response, null, result);
+  },
+  'updateProducts': (request, response) => {
+    const input = request.table4.body.input;
+    const result = db.products.update(input);
+    handleRequest(response, null, result);
+  },
+  'getCart': (request, response) => {
+    const input = request.table4.body.input;
+    const result = db.cart.get(input);
+    handleRequest(response, null, result);
+  },
+  'updateCart': (request, response) => {
+    const input = request.table4.body.input;
+    const result = db.cart.update(input);
     handleRequest(response, null, result);
   }
 }
