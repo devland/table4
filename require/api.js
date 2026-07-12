@@ -225,6 +225,16 @@ module.exports = {
     });
     handleRequest(response, null, result);
   },
+  'getPlugins': (request, response) => {
+    const input = request.table4.body.input;
+    const result = db.plugins.get(input);
+    handleRequest(response, null, result);
+  },
+  'updatePlugins': (request, response) => {
+    const input = request.table4.body.input;
+    const result = db.plugins.update(input);
+    handleRequest(response, null, result);
+  },
   'getUsers': (request, response) => {
     const input = request.table4.body.input;
     const result = db.users.get({
@@ -234,65 +244,43 @@ module.exports = {
     }, input.limit, input.offset);
     handleRequest(response, null, result);
   },
-  'getTags': (request, response) => {
+  'getTagKeys': (request, response) => {
     const input = request.table4.body.input;
-    const result = db.tags.get({
-      for_table: input.for_table,
-      for_id: input.for_id,
-      key: input.key,
-      language: input.language
-    });
-    handleRequest(response, null, result);
-  },
-  'updateTags': (request, response) => {
-    const input = request.table4.body.input;
-    const data = [];
-    for (let item of input) {
-      data.push({
-        for_table: item.for_table,
-        for_id: item.for_id,
-        key: item.key,
-        value: item.value,
-        language: item.language,
-        remove: item.remove
-      });
-    }
-    const result = db.tags.update(data);
+    const result = db.tagKeys.get(input);
     handleRequest(response, null, result);
   },
   'updateTagKeys': (request, response) => {
     const input = request.table4.body.input;
-    const data = [];
-    for (let item of input) {
-      data.push({
-        key: item.key,
-        one_per: item.one_per,
-        remove: item.remove
-      });
-    }
-    const result = db.tagKeys.update(data);
+    const result = db.tagKeys.update(input);
+    handleRequest(response, null, result);
+  },
+  'getTags': (request, response) => {
+    const input = request.table4.body.input;
+    const result = db.tags.get(input);
+    handleRequest(response, null, result);
+  },
+  'updateTags': (request, response) => {
+    const input = request.table4.body.input;
+    const result = db.tags.update(input);
+    handleRequest(response, null, result);
+  },
+  'getCurrencies': (request, response) => {
+    const result = db.currencies.get();
+    handleRequest(response, null, result);
+  },
+  'updateCurrencies': (request, response) => {
+    const input = request.table4.body.input;
+    const result = db.currencies.update(input);
     handleRequest(response, null, result);
   },
   'getPrices': (request, response) => {
     const input = request.table4.body.input;
-    const result = db.prices.get({
-      currency: input.currency,
-      product_id: input.product_id
-    });
+    const result = db.prices.get(input);
     handleRequest(response, null, result);
   },
   'updatePrices': (request, response) => {
     const input = request.table4.body.input;
-    const data = [];
-    for (let item of input) {
-      data.push({
-        currency: item.currency,
-        product_id: item.product_id,
-        value: item.value,
-        remove: item.remove
-      });
-    }
-    const result = db.prices.update(data);
+    const result = db.prices.update(input);
     handleRequest(response, null, result);
   },
   'getProducts': (request, response) => {
@@ -318,6 +306,16 @@ module.exports = {
   'updateCart': (request, response) => {
     const input = request.table4.body.input;
     const result = db.cart.update(input);
+    handleRequest(response, null, result);
+  },
+  'getOrderFlows': (request, response) => {
+    const input = request.table4.body.input;
+    const result = db.orderFlows.get(input);
+    handleRequest(response, null, result);
+  },
+  'updateOrderFlows': (request, response) => {
+    const input = request.table4.body.input;
+    const result = db.orderFlows.update(input);
     handleRequest(response, null, result);
   }
 }

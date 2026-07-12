@@ -94,7 +94,7 @@ module.exports = function (options) {
       });
     },
     remove: function (data) {
-      // to do
+      // to do <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     }
   }
   this.tagKeys = {
@@ -102,7 +102,7 @@ module.exports = function (options) {
       return this.db.prepare('select * from tag_keys').all();
     },
     update: function (data) {
-      return self.generic.update('tag_keys', ['key'], ['active'], data);
+      return self.generic.update.apply(this, ['tag_keys', ['key'], ['active'], data]);
     }
   }
   this.tags = {
@@ -111,7 +111,7 @@ module.exports = function (options) {
       return this.db.prepare(`select * from tags where ${fields.join(' and ')}`).all(data);
     },
     update: function (data) {
-      return self.generic.update('tags', ['for_table', 'for_id', 'key', 'language'], ['value'], data);
+      return self.generic.update.apply(this, ['tags', ['for_table', 'for_id', 'key', 'language'], ['value'], data]);
     }
   }
   this.plugins = {
@@ -121,14 +121,8 @@ module.exports = function (options) {
     getActive: function () {
       return this.db.prepare('select * from plugins where active = :active').all({ active: 'yes' });
     },
-    set: function (data) {
-      return this.db.prepare('update plugins set active = :active where name = :name').run(data);
-    },
-    add: function (data) {
-      return this.db.prepare('insert into plugins (name, active) values (:name, :active)').run(data);
-    },
-    remove: function (data) {
-      return this.db.prepare('delete from plugins where name = :name').run(data);
+    update: function (data) {
+      return self.generic.update.apply(this, ['plugins', ['name'], ['name', 'active'], data]);
     }
   }
   this.products = {
@@ -142,7 +136,7 @@ module.exports = function (options) {
         delete data.ids;
       }
       const products = this.db.prepare(`select * from products${where} order by id asc limit :limit offset :offset`).all(data);
-      return self.generic.getTags('products', products);
+      return self.generic.getTags.apply(this, ['products', products]);
     },
     find: function (data) {
       if (!['tags.value', 'prices.price'].includes(data.orderBy)) {
@@ -210,7 +204,9 @@ module.exports = function (options) {
       return ids;
     },
     update: function (data) {
-      return self.generic.update('products', ['id'], ['stock'], data);
+      return self.generic.update.apply(this, ['products', ['id'], ['stock'], data, {
+        noInsertPks: true
+      }]);
     }
   }
   this.cart = {
@@ -218,21 +214,18 @@ module.exports = function (options) {
       return this.db.prepare('select * from cart where user_id = :user_id').all(data);
     },
     update: function (data) {
-      return self.generic.update('cart', ['user_id', 'product_id'], ['quantity'], data);
+      for (let i = 0; i < data.length; i++) {
+        data[i].created_at = new Date().toISOString();
+      }
+      return self.generic.update.apply(this, ['cart', ['user_id', 'product_id'], ['quantity', 'created_at'], data]);
     }
   }
   this.currencies = {
     get: function () {
       return this.db.prepare('select * from currencies').all();
     },
-    set: function (data) {
-      return this.db.prepare('update currencies set active = :active where code = :code').run(data);
-    },
-    add: function (data) {
-      return this.db.prepare('insert into currencies (code, active) values (:code, :active)').run(data);
-    },
-    remove: function (data) {
-      return this.db.prepare('delete from currencies where code = :code').run(data);
+    update: function (data) {
+      return self.generic.update.apply(this, ['currencies', ['code'], ['active'], data]);
     }
   }
   this.prices = {
@@ -241,21 +234,57 @@ module.exports = function (options) {
       return this.db.prepare(`select * from prices where ${fields.join(' and ')}`).all(data);
     },
     update: function (data) {
-      return self.generic.update('prices', ['product_id', 'currency'], ['value'], data);
+      return self.generic.update.apply(this, ['prices', ['product_id', 'currency'], ['value'], data]);
+    }
+  }
+  this.orderFlows = {
+    get: function () {
+      return this.db.prepare('select * from order_flows').all();
+    },
+    update: function (data) {
+      try {
+        this.db.exec('begin');
+        const ids = [];
+        for (let i = 0; i < data.length; i++) {
+          data[i].created_at = new Date().toISOString();
+          if (data[i].id) {
+            ids.push(clean(data[i].id));
+          }
+        }
+        let result = this.db.prepare(`select count(*) as count from orders where flow_id in (${ids.join(', ')})`).get();
+        if (result.count > 0) {
+          this.db.exec('rollback');
+          throw 'order_flow_has_orders';
+          return;
+        }
+        result = self.generic.update.apply(this, ['order_flows', ['id'], ['tree', 'active', 'created_at'], data, {
+          skipBegin: true,
+          noInsertPks: true
+        }]);
+        this.db.exec('commit');
+        return result;
+      }
+      catch (error) {
+        this.db.exec('rollback');
+        throw error;
+      }
     }
   }
   this.generic = {
-    update: function (table, pkColumns, toSetColumns, data) {
+    update: function (table, pkColumns, toSetColumns, data, options = {}) {
       try {
-        this.db.exec('begin');
+        if (!options.skipBegin) {
+          this.db.exec('begin');
+        }
         let selectWhere = [];
         let selectParams = {}
         const allColumns = pkColumns.concat(toSetColumns);
+        const insertColumns = options.noInsertPks ? toSetColumns : allColumns;
         let index = 0;
         const output = {
-          inserted: [],
-          updated: [],
-          removed: []
+          inserted: 0,
+          updated: 0,
+          removed: 0
         }
         const computeClause = (columns, prefix = '', separator, options = {}) => {
           let clauses = [];
@@ -278,12 +307,28 @@ module.exports = function (options) {
           }
           return params;
         }
+        const hasKeys = (input, list) => {
+          let has = true;
+          for (let key of list) {
+            if (typeof input[key] == 'undefined') {
+              has = false;
+              break;
+            }
+          }
+          return has;
+        }
         for (let item of data) {
+          if (!hasKeys(item, pkColumns)) {
+            continue;
+          }
           selectWhere.push(computeClause(pkColumns, index, ' and '));
           selectParams = { ...selectParams, ...computeParams(pkColumns, item, index) };
           index++;
         }
-        const existing = this.db.prepare(`select * from ${table} where ${selectWhere.join(' or ')}`).all(selectParams);
+        let existing = [];
+        if (selectWhere.length) {
+          existing = this.db.prepare(`select * from ${table} where ${selectWhere.join(' or ')}`).all(selectParams);
+        }
         const insert = [];
         let insertParams = {}
         const update = [];
@@ -309,7 +354,7 @@ module.exports = function (options) {
               delete item.remove;
               remove.push(computeClause(pkColumns, index, ' and '));
               removeParams = { ...removeParams, ...computeParams(pkColumns, item, index) };
-              output.removed.push(item);
+              output.removed++;
             }
             else {
               delete item.remove;
@@ -319,19 +364,19 @@ module.exports = function (options) {
                 query: `update ${table} set ${updateSet} where ${updateWhere}`,
                 params: computeParams(allColumns, item)
               });
-              output.updated.push(item);
+              output.updated++;
             }
           }
           else if (!item.remove) {
             delete item.remove;
-            insert.push(computeClause(allColumns, index, ', ', { justValues: true }));
-            insertParams = { ...insertParams, ...computeParams(allColumns, item, index) };
-            output.inserted.push(item);
+            insert.push(computeClause(insertColumns, index, ', ', { justValues: true }));
+            insertParams = { ...insertParams, ...computeParams(insertColumns, item, index) };
+            output.inserted++;
           }
           index++;
         }
         if (insert.length) {
-          this.db.prepare(`insert into ${table} (${allColumns.join(', ')}) values ${insert.join(', ')}`).run(insertParams);
+          this.db.prepare(`insert into ${table} (${insertColumns.join(', ')}) values ${insert.join(', ')}`).run(insertParams);
         }
         if (update.length) {
           for (let item of update) {
@@ -341,12 +386,15 @@ module.exports = function (options) {
         if (remove.length) {
           this.db.prepare(`delete from ${table} where ${remove.join(' or ')}`).run(removeParams);
         }
-        output.entries = this.db.prepare(`select * from ${table} where ${selectWhere.join(' or ')}`).all(selectParams);
-        this.db.exec('commit');
+        if (!options.skipBegin) {
+          this.db.exec('commit');
+        }
         return output;
       }
       catch (error) {
-        this.db.exec('rollback');
+        if (!options.skipBegin) {
+          this.db.exec('rollback');
+        }
         throw error;
       }
     },
@@ -376,6 +424,9 @@ module.exports = function (options) {
     }
   }
   for (let table in this) {
+    if (table == 'generic') {
+      continue;
+    }
     for (let method in this[table]) {
       wrap(table, method, this[table][method]);
     }

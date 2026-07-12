@@ -73,11 +73,6 @@ CREATE TABLE "prices" (
 	"value"	REAL NOT NULL,
 	PRIMARY KEY("product_id","currency")
 );
-CREATE TABLE "products" (
-	"id"	INTEGER,
-	"stock"	INTEGER NOT NULL DEFAULT 0,
-	PRIMARY KEY("id" AUTOINCREMENT)
-);
 CREATE TABLE "order_history" (
 	"order_id"	INTEGER NOT NULL,
 	"status"	TEXT NOT NULL,
@@ -110,16 +105,16 @@ CREATE TABLE "tag_keys" (
 CREATE INDEX "tag_keys-active" ON "tag_keys" (
 	"active"	ASC
 );
-CREATE TABLE "order_flows" (
+CREATE TABLE "products" (
 	"id"	INTEGER,
-	"tree"	TEXT NOT NULL DEFAULT '{}',
+	"stock"	REAL,
 	PRIMARY KEY("id" AUTOINCREMENT)
 );
 CREATE TABLE "order_items" (
 	"order_id"	INTEGER,
 	"product_id"	INTEGER,
-	"quantity"	INTEGER NOT NULL,
-	"unit_price"	INTEGER NOT NULL,
+	"quantity"	REAL NOT NULL,
+	"unit_price"	REAL NOT NULL,
 	PRIMARY KEY("order_id","product_id")
 );
 CREATE INDEX "order_items-order_id" ON "order_items" (
@@ -131,6 +126,26 @@ CREATE INDEX "order_items-product_id" ON "order_items" (
 CREATE INDEX "order_items-quantity" ON "order_items" (
 	"quantity"	ASC
 );
+CREATE TABLE "cart" (
+	"user_id"	INTEGER,
+	"product_id"	INTEGER,
+	"quantity"	REAL NOT NULL DEFAULT 0,
+	"created_at"	TEXT NOT NULL,
+	PRIMARY KEY("user_id","product_id")
+);
+CREATE TABLE "order_flows" (
+	"id"	INTEGER,
+	"tree"	TEXT NOT NULL DEFAULT '{}',
+	"active"	TEXT NOT NULL DEFAULT 'no',
+	"created_at"	TEXT NOT NULL,
+	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE INDEX "cart-created_at" ON "cart" (
+	"created_at"	DESC
+);
+CREATE INDEX "order_flows-created_at" ON "order_flows" (
+	"created_at"	DESC
+);
 CREATE TABLE "orders" (
 	"id"	INTEGER,
 	"flow_id"	INTEGER NOT NULL,
@@ -139,7 +154,11 @@ CREATE TABLE "orders" (
 	"currency"	TEXT NOT NULL,
 	"status"	TEXT NOT NULL,
 	"note"	TEXT,
+	"created_at"	TEXT NOT NULL,
 	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE INDEX "orders-currency" ON "orders" (
+	"currency"	ASC
 );
 CREATE INDEX "orders-flow_id" ON "orders" (
 	"flow_id"	ASC
@@ -153,12 +172,6 @@ CREATE INDEX "orders-token" ON "orders" (
 CREATE INDEX "orders-user_id" ON "orders" (
 	"user_id"	ASC
 );
-CREATE INDEX "orders-currency" ON "orders" (
-	"currency"	ASC
-);
-CREATE TABLE "cart" (
-	"user_id"	INTEGER,
-	"product_id"	INTEGER,
-	"quantity"	INTEGER NOT NULL DEFAULT 0,
-	PRIMARY KEY("user_id","product_id")
+CREATE INDEX "orders-created_at" ON "orders" (
+	"created_at"	DESC
 );
