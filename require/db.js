@@ -1,14 +1,7 @@
 module.exports = function (options) {
   const { DatabaseSync } = require('node:sqlite');
-  const clean = (input) => {
-    if (isNaN(input)) {
-      return input.replaceAll(/[^a-z0-9_]/mgi, '');
-    }
-    else {
-      return parseFloat(input);
-    }
-  }
-  const getFieldAssignments = (data) => {
+  const { parseNumber, clean } = require('./utils.js');
+  const cleanKeys = (data) => {
     const fields = [];
     for (let key of Object.keys(data)) {
       if (typeof data[key] == 'undefined') {
@@ -44,10 +37,10 @@ module.exports = function (options) {
   }
   this.reset_codes = {
     get: function (data) {
-      return this.db.prepare('select * from reset_codes where code = :code').get(data);
+      return this.db.prepare('select * from reset_codes where code = :code and type = :type').get(data);
     },
     add: function (data, duration) {
-      const query = this.db.prepare('insert into reset_codes (code, user_id, expires_at) values (:code, :user_id, :expires_at)');
+      const query = this.db.prepare('insert into reset_codes (code, user_id, type, data, expires_at) values (:code, :user_id, :type, :data, :expires_at)');
       const expires_at = new Date();
       expires_at.setTime(expires_at.getTime() + duration);
       return query.run({
@@ -75,11 +68,11 @@ module.exports = function (options) {
       return query.get(data);
     },
     get: function (data, limit = 10, offset = 0) {
-      let fields = getFieldAssignments(data);
+      let fields = cleanKeys(data);
       return this.db.prepare(`select id, email, type, created_at from users where ${fields.join(' and ')} limit :limit offset :offset`).all({ ...data, limit, offset });
     },
     set: function (data, toSet) {
-      let fields = getFieldAssignments(data);
+      let fields = cleanKeys(data);
       return this.db.prepare(`update users set ${fields.join(', ')} where id = :id`).run(data);
     },
     setPassword: function (data) {
@@ -107,22 +100,11 @@ module.exports = function (options) {
   }
   this.tags = {
     get: function (data) {
-      let fields = getFieldAssignments(data);
+      let fields = cleanKeys(data);
       return this.db.prepare(`select * from tags where ${fields.join(' and ')}`).all(data);
     },
     update: function (data) {
       return self.generic.update.apply(this, ['tags', ['for_table', 'for_id', 'key', 'language'], ['value'], data]);
-    }
-  }
-  this.plugins = {
-    get: function () {
-      return this.db.prepare('select * from plugins').all();
-    },
-    getActive: function () {
-      return this.db.prepare('select * from plugins where active = :active').all({ active: 'yes' });
-    },
-    update: function (data) {
-      return self.generic.update.apply(this, ['plugins', ['name'], ['name', 'active'], data]);
     }
   }
   this.products = {
@@ -135,8 +117,9 @@ module.exports = function (options) {
         where = ` where id in (${data.ids.join(', ')}) `;
         delete data.ids;
       }
-      const products = this.db.prepare(`select * from products${where} order by id asc limit :limit offset :offset`).all(data);
-      return self.generic.getTags.apply(this, ['products', products]);
+      let products = this.db.prepare(`select * from products${where} order by id asc limit :limit offset :offset`).all(data);
+      products = self.generic.getTags.apply(this, ['products', products]);
+      return self.generic.getPrices.apply(this, [products]);
     },
     find: function (data) {
       if (!['tags.value', 'prices.price'].includes(data.orderBy)) {
@@ -195,13 +178,21 @@ module.exports = function (options) {
         where += `${groupStart}${operator}( ${groupWhere} )${groupEnd}`;
       }
       const query = `select for_id as id from tags inner join prices on product_id = for_id where currency = :currency and for_table = 'products' and ${where} group by for_id having count(for_id) = ${tagClauseCount} order by ${data.orderBy} ${data.orderWay} limit :limit offset :offset`;
-      const ids = this.db.prepare(query).all({
+      const found = this.db.prepare(query).all({
         currency: data.currency,
         limit: data.limit,
         offset: data.offset,
         ...params
       });
-      return ids;
+      const ids = [];
+      for (let item of found) {
+        ids.push(item.id);
+      }
+      return self.methods.products.get.apply(this, [{
+        ids,
+        limit: data.limit,
+        offset: data.offset
+      }]);
     },
     update: function (data) {
       return self.generic.update.apply(this, ['products', ['id'], ['stock'], data, {
@@ -230,7 +221,7 @@ module.exports = function (options) {
   }
   this.prices = {
     get: function (data) {
-      let fields = getFieldAssignments(data);
+      let fields = cleanKeys(data);
       return this.db.prepare(`select * from prices where ${fields.join(' and ')}`).all(data);
     },
     update: function (data) {
@@ -261,6 +252,24 @@ module.exports = function (options) {
           skipBegin: true,
           noInsertPks: true
         }]);
+        this.db.exec('commit');
+        return result;
+      }
+      catch (error) {
+        this.db.exec('rollback');
+        throw error;
+      }
+    }
+  }
+  this.orders = {
+    get: function (data, limit = 10, offset = 0) {
+      let fields = cleanKeys(data);
+      return this.db.prepare(`select * from orders where ${fields.join(' and ')} limit :limit offset :offset`).all({ ...data, limit, offset });
+    },
+    update: function (data) {
+      try {
+        this.db.exec('begin');
+        this.db.prepare(`update orders set ${fields.join(', ')} where id = :id`).run(data);
         this.db.exec('commit');
         return result;
       }
@@ -408,18 +417,34 @@ module.exports = function (options) {
       }
       const tags = this.db.prepare(`select * from tags where for_table = :table and for_id in (${ids.join(', ')}) order by for_id asc`).all({ table });
       for (let item of tags) {
-        entries[map[item.for_id]].tags[item.key] = isNaN(item.value) ? item.value : parseFloat(item.value);
+        entries[map[item.for_id]].tags[item.key] = parseNumber(item.value);
+      }
+      return entries;
+    },
+    getPrices: function (entries) {
+      const ids = [];
+      const map = {};
+      for (let i = 0; i < entries.length; i++) {
+        entries[i].prices = {};
+        ids.push(entries[i].id);
+        map[entries[i].id] = i;
+      }
+      const prices = this.db.prepare(`select * from prices where product_id in (${ids.join(', ')}) order by product_id asc`).all();
+      for (let item of prices) {
+        entries[map[item.product_id]].prices[item.currency] = parseNumber(item.value);
       }
       return entries;
     }
   }
   // run each method within its own db instance
-  const wrap = (table, method, run) => {
+  const wrap = (table, method) => {
+    this.methods ??= {}; // preserve db methods without own db connection
+    this.methods[table] ??= {};
+    this.methods[table][method] = this[table][method];
     this[table][method] = function () {
-      const self = {}
-      self.db = new DatabaseSync(options.dbPath);
-      const result = run.apply(self, arguments);
-      self.db.close();
+      this.db = new DatabaseSync(options.dbPath);
+      const result = self.methods[table][method].apply(this, arguments);
+      this.db.close();
       return result;
     }
   }
@@ -428,7 +453,7 @@ module.exports = function (options) {
       continue;
     }
     for (let method in this[table]) {
-      wrap(table, method, this[table][method]);
+      wrap(table, method);
     }
   }
 }

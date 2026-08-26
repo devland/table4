@@ -2,14 +2,15 @@
 // DO NOT CHANGE THIS FILE UNLESS YOU ARE SURE OF WHAT YOU ARE DOING
 module.exports = {
   admin: ['*'],
-  customer: [
-    'changePassword'
+  user: [
+    'changePassword',
+    'sendEmailChangeCode',
+    'changeEmail'
   ],
   everyone: [
-    'hello',
     'signup',
     'login',
-    'sendResetCode',
+    'sendPasswordResetCode',
     'resetPassword'
   ]
 }

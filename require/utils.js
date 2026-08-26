@@ -1,12 +1,28 @@
 module.exports = {
-  getUrl: async (url, options, type) => {
+  parseNumber: (value) => {
+    return isNaN(value) ? value : parseFloat(value);
+  },
+  clean: (input) => { // removes non alpha numeric characters
+    if (isNaN(input)) {
+      return input.replaceAll(/[^a-z0-9_]/mgi, '');
+    }
+    else {
+      return parseFloat(input);
+    }
+  },
+  fetch: async (url, options, type = 'json') => {
     const result = await fetch(url, options);
     return await result[type]();
   },
-  log: (item) => {
+  log: function () {
     const now = new Date();
     process.stdout.write(`[${now.toISOString()}]: `);
-    console.log(item);
+    for (let item of arguments) {
+      if (typeof item == 'undefined') {
+        continue;
+      }
+      console.log(item);
+    }
   },
   handleRequest: (response, error, output, headers = {}) => {
     if (!headers['Content-Type']) {

@@ -1,8 +1,8 @@
 const config = require('./config.js');
-const { getUrl } = require('../utils.js');
+const utils = require('../utils.js');
 module.exports = {
   send: (options) => {
-    return getUrl(config.url, {
+    return utils.fetch(config.url, {
       method: 'post',
       headers: {
         'User-Agent': 'table4/1.0',
@@ -12,6 +12,6 @@ module.exports = {
         ...options,
         from: config.from
       })
-    }, 'json');
+    });
   }
 }

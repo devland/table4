@@ -1,22 +1,8 @@
-CREATE TABLE "reset_codes" (
-	"code"	TEXT NOT NULL,
-	"user_id"	INTEGER NOT NULL,
-	"expires_at"	TEXT NOT NULL,
-	PRIMARY KEY("code")
-);
 CREATE TABLE "tokens" (
 	"token"	TEXT NOT NULL,
 	"user_id"	INTEGER NOT NULL,
 	"expires_at"	TEXT NOT NULL,
 	PRIMARY KEY("token")
-);
-CREATE TABLE "users" (
-	"id"	INTEGER,
-	"email"	TEXT NOT NULL UNIQUE,
-	"password"	TEXT NOT NULL,
-	"type"	TEXT NOT NULL DEFAULT 'customer',
-	"created_at"	TEXT NOT NULL,
-	PRIMARY KEY("id" AUTOINCREMENT)
 );
 
 CREATE TABLE "tags" (
@@ -27,17 +13,8 @@ CREATE TABLE "tags" (
 	"value"	TEXT NOT NULL,
 	PRIMARY KEY("for_table","for_id","key","language")
 );
-CREATE INDEX "reset_codes-created_at" ON "reset_codes" (
-	"expires_at"	DESC
-);
 CREATE INDEX "tokens-expires_at" ON "tokens" (
 	"expires_at"	DESC
-);
-CREATE INDEX "users-created_at" ON "users" (
-	"created_at"	DESC
-);
-CREATE INDEX "users-type" ON "users" (
-	"type"	ASC
 );
 CREATE INDEX "tags-table_id_key_language" ON "tags" (
 	"for_table"	ASC,
@@ -54,14 +31,6 @@ CREATE INDEX "tags-key_value" ON "tags" (
 	"key"	ASC,
 	"value"	ASC
 );
-CREATE TABLE "plugins" (
-	"name"	TEXT NOT NULL,
-	"active"	TEXT NOT NULL DEFAULT 'no',
-	PRIMARY KEY("name")
-);
-CREATE INDEX "plugins-active" ON "plugins" (
-	"active"	ASC
-);
 CREATE TABLE "currencies" (
 	"code"	TEXT,
 	"active"	TEXT DEFAULT 'no',
@@ -72,23 +41,6 @@ CREATE TABLE "prices" (
 	"currency"	TEXT NOT NULL,
 	"value"	REAL NOT NULL,
 	PRIMARY KEY("product_id","currency")
-);
-CREATE TABLE "order_history" (
-	"order_id"	INTEGER NOT NULL,
-	"status"	TEXT NOT NULL,
-	"note"	TEXT,
-	"updated_at"	TEXT NOT NULL
-);
-CREATE INDEX "order_history-order_id_updated_at" ON "order_history" (
-	"order_id"	ASC,
-	"updated_at"	DESC
-);
-CREATE INDEX "order_history-status_updated_at" ON "order_history" (
-	"status"	ASC,
-	"updated_at"	DESC
-);
-CREATE INDEX "reset_codes-user_id" ON "reset_codes" (
-	"user_id"	ASC
 );
 CREATE INDEX "tokens-user_id" ON "tokens" (
 	"user_id"	ASC
@@ -146,16 +98,34 @@ CREATE INDEX "cart-created_at" ON "cart" (
 CREATE INDEX "order_flows-created_at" ON "order_flows" (
 	"created_at"	DESC
 );
+CREATE TABLE "order_history" (
+	"order_id"	INTEGER NOT NULL,
+	"status"	TEXT NOT NULL,
+	"notes"	TEXT,
+	"updated_at"	TEXT NOT NULL
+);
+CREATE INDEX "order_history-order_id_updated_at" ON "order_history" (
+	"order_id"	ASC,
+	"updated_at"	DESC
+);
+CREATE INDEX "order_history-status_updated_at" ON "order_history" (
+	"status"	ASC,
+	"updated_at"	DESC
+);
 CREATE TABLE "orders" (
 	"id"	INTEGER,
 	"flow_id"	INTEGER NOT NULL,
 	"user_id"	INTEGER,
-	"token"	TEXT,
+	"uuid"	TEXT,
 	"currency"	TEXT NOT NULL,
+	"paid"	TEXT NOT NULL DEFAULT 'no',
 	"status"	TEXT NOT NULL,
-	"note"	TEXT,
+	"notes"	TEXT,
 	"created_at"	TEXT NOT NULL,
 	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE INDEX "orders-created_at" ON "orders" (
+	"created_at"	DESC
 );
 CREATE INDEX "orders-currency" ON "orders" (
 	"currency"	ASC
@@ -163,15 +133,46 @@ CREATE INDEX "orders-currency" ON "orders" (
 CREATE INDEX "orders-flow_id" ON "orders" (
 	"flow_id"	ASC
 );
+CREATE INDEX "orders-paid" ON "orders" (
+	"paid"	ASC
+);
 CREATE INDEX "orders-status" ON "orders" (
 	"status"	ASC
-);
-CREATE INDEX "orders-token" ON "orders" (
-	"token"	ASC
 );
 CREATE INDEX "orders-user_id" ON "orders" (
 	"user_id"	ASC
 );
-CREATE INDEX "orders-created_at" ON "orders" (
+CREATE INDEX "orders-uuid" ON "orders" (
+	"uuid"	ASC
+);
+CREATE TABLE "users" (
+	"id"	INTEGER,
+	"email"	TEXT NOT NULL UNIQUE,
+	"password"	TEXT NOT NULL,
+	"type"	TEXT NOT NULL DEFAULT 'user',
+	"created_at"	TEXT NOT NULL,
+	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE INDEX "users-created_at" ON "users" (
 	"created_at"	DESC
+);
+CREATE INDEX "users-type" ON "users" (
+	"type"	ASC
+);
+CREATE INDEX "users-email" ON "users" (
+	"email"	ASC
+);
+CREATE TABLE "reset_codes" (
+	"code"	TEXT NOT NULL,
+	"user_id"	INTEGER NOT NULL,
+	"type"	TEXT NOT NULL,
+	"data"	TEXT,
+	"expires_at"	TEXT NOT NULL,
+	PRIMARY KEY("code","type")
+);
+CREATE INDEX "reset_codes-created_at" ON "reset_codes" (
+	"expires_at"	DESC
+);
+CREATE INDEX "reset_codes-user_id" ON "reset_codes" (
+	"user_id"	ASC
 );
