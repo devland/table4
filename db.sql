@@ -16,17 +16,6 @@ CREATE TABLE "tags" (
 CREATE INDEX "tokens-expires_at" ON "tokens" (
 	"expires_at"	DESC
 );
-CREATE INDEX "tags-table_id_key_language" ON "tags" (
-	"for_table"	ASC,
-	"for_id"	DESC,
-	"key"	ASC,
-	"language"	ASC
-);
-CREATE INDEX "tags-table_id_language" ON "tags" (
-	"for_table"	ASC,
-	"for_id"	DESC,
-	"language"	ASC
-);
 CREATE INDEX "tags-key_value" ON "tags" (
 	"key"	ASC,
 	"value"	ASC
@@ -56,11 +45,6 @@ CREATE TABLE "tag_keys" (
 );
 CREATE INDEX "tag_keys-active" ON "tag_keys" (
 	"active"	ASC
-);
-CREATE TABLE "products" (
-	"id"	INTEGER,
-	"stock"	REAL,
-	PRIMARY KEY("id" AUTOINCREMENT)
 );
 CREATE TABLE "cart" (
 	"user_id"	INTEGER,
@@ -176,4 +160,31 @@ CREATE INDEX "order_items-product_id" ON "order_items" (
 );
 CREATE INDEX "order_items-quantity" ON "order_items" (
 	"quantity"	ASC
+);
+CREATE INDEX "order_items-parent_id" ON "order_items" (
+	"parent_id"	ASC
+);
+CREATE INDEX "tags-table_id_language" ON "tags" (
+	"for_table"	ASC,
+	"for_id"	ASC,
+	"language"	ASC
+);
+CREATE INDEX "tags-table_id_key_language" ON "tags" (
+	"for_table"	ASC,
+	"for_id"	ASC,
+	"key"	ASC,
+	"language"	ASC
+);
+CREATE TABLE "products" (
+	"id"	INTEGER,
+	"type"	TEXT,
+	"parent_type"	TEXT,
+	"stock"	REAL,
+	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE INDEX "products-type" ON "products" (
+	"type"	ASC
+);
+CREATE INDEX "products-parent_type" ON "products" (
+	"parent_type"	ASC
 );
