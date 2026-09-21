@@ -58,14 +58,8 @@ module.exports = function (options) {
   }
   this.users = {
     getFirst: function (data) {
-      let query;
-      if (data.id) {
-        query = this.db.prepare('select * from users where id = :id');
-      }
-      else if (data.email) {
-        query = this.db.prepare('select * from users where email = :email');
-      }
-      return query.get(data);
+      let fields = cleanKeys(data);
+      return this.db.prepare(`select id, email, password, type, created_at from users where ${fields.join(' and ')}`).get(data);
     },
     get: function (data, limit = 10, offset = 0) {
       let fields = cleanKeys(data);
@@ -76,18 +70,14 @@ module.exports = function (options) {
       return this.db.prepare(`update users set ${fields.join(', ')} where id = :id`).run(data);
     },
     setPassword: function (data) {
-      const query = this.db.prepare('update users set password = :password where id = :id');
-      return query.run(data);
+      return this.db.prepare('update users set password = :password where id = :id').run(data);
     },
     add: function (data) {
-      const query = this.db.prepare('insert into users (email, password, type, created_at) values (:email, :password, :type, :created_at)');
-      return query.run({
-        ...data,
-        created_at: new Date().toISOString()
-      });
+      data.created_at = new Date().toISOString();
+      return this.db.prepare('insert into users (email, password, type, created_at) values (:email, :password, :type, :created_at)').run(data);
     },
     remove: function (data) {
-      // to do <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+      // to do; all user associated data has to be removed...
     }
   }
   this.tagKeys = {
@@ -109,14 +99,15 @@ module.exports = function (options) {
   }
   this.products = {
     get: function (data) {
-      let where = '';
-      if (data.ids && data.ids.length) {
-        for (let i = 0; i < data.ids.length; i++) {
-          data.ids[i] = clean(data.ids[i]);
-        }
-        where = ` where id in (${data.ids.join(', ')}) `;
-        delete data.ids;
+      if (!data.ids || !data.ids.length) {
+        return [];
       }
+      let where = '';
+      for (let i = 0; i < data.ids.length; i++) {
+        data.ids[i] = clean(data.ids[i]);
+      }
+      where = ` where id in (${data.ids.join(', ')}) `;
+      delete data.ids;
       let products = this.db.prepare(`select * from products${where} order by id asc limit :limit offset :offset`).all(data);
       products = self.generic.getTags.apply(this, ['products', products]);
       return self.generic.getPrices.apply(this, [products]);
@@ -139,7 +130,7 @@ module.exports = function (options) {
       }
       let where = '';
       let params = {}
-      const tables = ['tags', 'prices'];
+      const tables = ['products', 'tags', 'prices'];
       const logicOperators = ['and', 'or'];
       const operators = ['=', '<', '>', '<=', '>=', 'like'];
       let index = 0;
@@ -155,11 +146,13 @@ module.exports = function (options) {
             throw 'invalid_operator';
             return;
           }
+          if (!tables.includes(clause.type)) {
+            throw 'invalid_table';
+            return;
+          }
           const name = `var_${index}`;
           let column = '';
-          if (tables.includes(clause.type)) {
-            column = `"${clean(clause.type)}".`;
-          }
+          column = `"${clean(clause.type)}".`;
           column += `"${clean(clause.key)}"`;
           if (clause.number) {
             column = `cast(${column} as numeric)`;
@@ -177,7 +170,15 @@ module.exports = function (options) {
         const groupEnd = item.groupEnd ? ' )' : '';
         where += `${groupStart}${operator}( ${groupWhere} )${groupEnd}`;
       }
-      const query = `select for_id as id from tags inner join prices on product_id = for_id where currency = :currency and for_table = 'products' and ${where} group by for_id having count(for_id) = ${tagClauseCount} order by ${data.orderBy} ${data.orderWay} limit :limit offset :offset`;
+      const query = `select tags.for_id as id from tags
+      inner join products on products.id = tags.for_id
+      inner join prices on prices.product_id = tags.for_id
+      where prices.currency = :currency
+        and tags.for_table = 'products'
+        and ${where}
+      group by tags.for_id having count(tags.for_id) = ${tagClauseCount}
+      order by ${data.orderBy} ${data.orderWay}
+      limit :limit offset :offset`;
       const found = this.db.prepare(query).all({
         currency: data.currency,
         limit: data.limit,
@@ -195,7 +196,7 @@ module.exports = function (options) {
       }]);
     },
     update: function (data) {
-      return self.generic.update.apply(this, ['products', ['id'], ['stock'], data, {
+      return self.generic.update.apply(this, ['products', ['id'], ['type', 'parent_type', 'stock'], data, {
         noInsertPks: true
       }]);
     }
@@ -267,18 +268,20 @@ module.exports = function (options) {
       return this.db.prepare(`select * from orders where ${fields.join(' and ')} limit :limit offset :offset`).all({ ...data, limit, offset });
     },
     update: function (data) {
-      try {
-        this.db.exec('begin');
-        this.db.prepare(`update orders set ${fields.join(', ')} where id = :id`).run(data);
-        this.db.exec('commit');
-        return result;
-      }
-      catch (error) {
-        this.db.exec('rollback');
-        throw error;
-      }
+      data.created_at = new Date().toISOString();
+      return self.generic.update.apply(this, ['orders', ['id'], ['flow_id', 'user_id', 'uuid', 'currency', 'payment', 'status', 'notes', 'created_at'], data, {
+        skipBegin: true,
+        noInsertPks: true
+      }]);
     }
   }
+  /*
+   * pkColumns - array of primary key columns
+   * toSetColumns - array of columns which will be set apart from the pkColumns
+   * options:
+   *   skipBegin - if true does not start transaction
+   *   noInsertPks - if true does not insert primary key values (useful for auto incremented primary keys)
+   */
   this.generic = {
     update: function (table, pkColumns, toSetColumns, data, options = {}) {
       try {
@@ -295,14 +298,14 @@ module.exports = function (options) {
           updated: 0,
           removed: 0
         }
-        const computeClause = (columns, prefix = '', separator, options = {}) => {
+        const computeClause = (columns, prefix = '', separator, optionals = {}) => {
           let clauses = [];
           const params = [];
           for (let column of columns) {
-            const columnEquals = options.justValues ? '' : `${column} = `;
+            const columnEquals = optionals.justValues ? '' : `${column} = `;
             clauses.push(`${columnEquals}:${prefix != '' ? prefix + '_' : ''}${column}`);
           }
-          if (options.noBrackets) {
+          if (optionals.noBrackets) {
             return clauses.join(separator);
           }
           else {

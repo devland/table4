@@ -60,18 +60,18 @@ module.exports = {
           return;
         }
         await module.exports[body.method](request, response);
-        const benchmarkEnd = performance.now();
-        log(`${request.url}/${body.method} [${response.statusCode}] (${(benchmarkEnd - benchmarkStart)} ms, ip ${request.socket.remoteAddress})`);
+        const benchmarkTime = (performance.now() - benchmarkStart).toFixed(3);
+        log(`${request.url}/${body.method} [${response.statusCode}] (${benchmarkTime} ms, ip ${request.socket.remoteAddress})`);
       }
       catch (error) {
         handleRequest(response, error);
-        const benchmarkEnd = performance.now();
+        const benchmarkTime = (performance.now() - benchmarkStart).toFixed(3);
         let label = 'error';
         if (typeof error == 'string') {
           label = error;
           error = undefined;
         }
-        log(`[${label}] ${request.url}/${body.method} [${response.statusCode}] (${(benchmarkEnd - benchmarkStart)} ms, ip ${request.socket.remoteAddress})`, error);
+        log(`[${label}] ${request.url}/${body.method} [${response.statusCode}] (${benchmarkTime} ms, ip ${request.socket.remoteAddress})`, error);
       }
     });
   },
@@ -264,6 +264,15 @@ module.exports = {
       subject: `${config.host} - ${lang.emailChanged}`,
       text: `${lang.emailChanged} @ ${now.toString()}`
     });
+    handleRequest(response, null, result);
+  },
+  'getUser': (request, response) => {
+    const input = request.table4.body.input;
+    const result = db.users.getFirst({
+      id: input.id,
+      email: input.email
+    });
+    delete result.password;
     handleRequest(response, null, result);
   },
   'getUsers': (request, response) => {

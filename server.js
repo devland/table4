@@ -32,7 +32,7 @@ const getExtension = (path) => {
 }
 const handleStatic = (request, response) => {
   let filePath;
-  let benchmarkStart = performance.now();
+  const benchmarkStart = performance.now();
   try {
     if (!request.url) {
       log('[nope] wrong request');
@@ -78,15 +78,15 @@ const handleStatic = (request, response) => {
     response.writeHead(httpCode, headers);
     response.write(result, 'binary');
     response.end();
-    const benchmarkEnd = performance.now();
-    log(`${filePath} [${httpCode}] (${(benchmarkEnd - benchmarkStart)} ms)`);
+    const benchmarkTime = (performance.now() - benchmarkStart).toFixed(3);
+    log(`${filePath} [${httpCode}] (${benchmarkTime} ms)`);
   }
   catch (error) {
     response.writeHead(500);
     response.write(error.message, 'binary');
     response.end();
-    const benchmarkEnd = performance.now();
-    log(`[error] ${filePath} (${(benchmarkEnd - benchmarkStart)} ms)`, error);
+    const benchmarkTime = (performance.now() - benchmarkStart).toFixed(3);
+    log(`[error] ${filePath} (${benchmarkTime} ms)`, error);
   }
 }
 https.createServer(options, (request, response) => {

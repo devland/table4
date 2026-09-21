@@ -62,22 +62,6 @@ CREATE TABLE "products" (
 	"stock"	REAL,
 	PRIMARY KEY("id" AUTOINCREMENT)
 );
-CREATE TABLE "order_items" (
-	"order_id"	INTEGER,
-	"product_id"	INTEGER,
-	"quantity"	REAL NOT NULL,
-	"unit_price"	REAL NOT NULL,
-	PRIMARY KEY("order_id","product_id")
-);
-CREATE INDEX "order_items-order_id" ON "order_items" (
-	"order_id"	ASC
-);
-CREATE INDEX "order_items-product_id" ON "order_items" (
-	"product_id"	ASC
-);
-CREATE INDEX "order_items-quantity" ON "order_items" (
-	"quantity"	ASC
-);
 CREATE TABLE "cart" (
 	"user_id"	INTEGER,
 	"product_id"	INTEGER,
@@ -112,39 +96,6 @@ CREATE INDEX "order_history-status_updated_at" ON "order_history" (
 	"status"	ASC,
 	"updated_at"	DESC
 );
-CREATE TABLE "orders" (
-	"id"	INTEGER,
-	"flow_id"	INTEGER NOT NULL,
-	"user_id"	INTEGER,
-	"uuid"	TEXT,
-	"currency"	TEXT NOT NULL,
-	"paid"	TEXT NOT NULL DEFAULT 'no',
-	"status"	TEXT NOT NULL,
-	"notes"	TEXT,
-	"created_at"	TEXT NOT NULL,
-	PRIMARY KEY("id" AUTOINCREMENT)
-);
-CREATE INDEX "orders-created_at" ON "orders" (
-	"created_at"	DESC
-);
-CREATE INDEX "orders-currency" ON "orders" (
-	"currency"	ASC
-);
-CREATE INDEX "orders-flow_id" ON "orders" (
-	"flow_id"	ASC
-);
-CREATE INDEX "orders-paid" ON "orders" (
-	"paid"	ASC
-);
-CREATE INDEX "orders-status" ON "orders" (
-	"status"	ASC
-);
-CREATE INDEX "orders-user_id" ON "orders" (
-	"user_id"	ASC
-);
-CREATE INDEX "orders-uuid" ON "orders" (
-	"uuid"	ASC
-);
 CREATE TABLE "users" (
 	"id"	INTEGER,
 	"email"	TEXT NOT NULL UNIQUE,
@@ -175,4 +126,54 @@ CREATE INDEX "reset_codes-created_at" ON "reset_codes" (
 );
 CREATE INDEX "reset_codes-user_id" ON "reset_codes" (
 	"user_id"	ASC
+);
+CREATE TABLE "orders" (
+	"id"	INTEGER,
+	"flow_id"	INTEGER NOT NULL,
+	"user_id"	INTEGER,
+	"uuid"	TEXT,
+	"currency"	TEXT NOT NULL,
+	"payment"	TEXT NOT NULL DEFAULT 'pending',
+	"status"	TEXT NOT NULL,
+	"notes"	TEXT,
+	"created_at"	TEXT NOT NULL,
+	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE INDEX "orders-created_at" ON "orders" (
+	"created_at"	DESC
+);
+CREATE INDEX "orders-currency" ON "orders" (
+	"currency"	ASC
+);
+CREATE INDEX "orders-flow_id" ON "orders" (
+	"flow_id"	ASC
+);
+CREATE INDEX "orders-paid" ON "orders" (
+	"payment"	ASC
+);
+CREATE INDEX "orders-status" ON "orders" (
+	"status"	ASC
+);
+CREATE INDEX "orders-user_id" ON "orders" (
+	"user_id"	ASC
+);
+CREATE INDEX "orders-uuid" ON "orders" (
+	"uuid"	ASC
+);
+CREATE TABLE "order_items" (
+	"order_id"	INTEGER,
+	"product_id"	INTEGER,
+	"parent_id"	INTEGER,
+	"quantity"	REAL NOT NULL,
+	"unit_price"	REAL NOT NULL,
+	PRIMARY KEY("order_id","product_id")
+);
+CREATE INDEX "order_items-order_id" ON "order_items" (
+	"order_id"	ASC
+);
+CREATE INDEX "order_items-product_id" ON "order_items" (
+	"product_id"	ASC
+);
+CREATE INDEX "order_items-quantity" ON "order_items" (
+	"quantity"	ASC
 );

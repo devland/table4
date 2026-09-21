@@ -1,7 +1,7 @@
 const utils = require('../utils.js');
 const config = require('./config.js');
 module.exports = {
-  createCheckout: async (order) => {
+  createCheckout: async function (order) {
     let body = '';
     body += 'mode=payment';
     body +=`&success_url=${encodeURIComponent(`https://${config.host}/checkPayment?session_id={CHECKOUT_SESSION_ID}`)}`;
@@ -21,12 +21,22 @@ module.exports = {
       body
     });
   },
-  getCheckout: async (checkoutId) => {
+  getCheckout: async function (checkoutId) {
     return await utils.fetch(`https://api.stripe.com/v1/checkout/sessions/${checkoutId}`, {
       method: 'GET',
       headers: {
         'Authorization': 'Basic ' + btoa(`${config.secret}:`)
       }
+    });
+  },
+  refund: async function (paymentId) {
+    const result = await utils.fetch(`https://api.stripe.com/v1/refunds`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': 'Basic ' + btoa(`${config.secret}:`)
+      },
+      body: `payment_intent=${paymentId}`
     });
   }
 }
