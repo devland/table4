@@ -63,7 +63,9 @@ module.exports = function (options) {
     },
     get: function (data, limit = 10, offset = 0) {
       let fields = cleanKeys(data);
-      return this.db.prepare(`select id, email, type, created_at from users where ${fields.join(' and ')} limit :limit offset :offset`).all({ ...data, limit, offset });
+      const total = this.db.prepare(`select count(id) as total from users where ${fields.join(' and ')}`).get();
+      const list = this.db.prepare(`select id, email, type, created_at from users where ${fields.join(' and ')} limit :limit offset :offset`).all({ ...data, limit, offset });
+      return { list, ...total }
     },
     set: function (data, toSet) {
       let fields = cleanKeys(data);
@@ -94,62 +96,72 @@ module.exports = function (options) {
       return this.db.prepare(`select * from tags where ${fields.join(' and ')}`).all(data);
     },
     update: function (data) {
-      return self.generic.update.apply(this, ['tags', ['for_table', 'for_id', 'key', 'language'], ['value'], data]);
+      return self.generic.update.apply(this, ['tags', ['id'], ['for_table', 'for_id', 'key', 'language', 'value'], data]);
+    }
+  }
+  this.product_flags = {
+    get: function (data) {
+      let fields = cleanKeys(data);
+      return this.db.prepare(`select * from product_flags where ${fields.join(' and ')}`).all(data);
+    },
+    update: function (data) {
+      return self.generic.update.apply(this, ['product_flags', ['id'], ['product_id', 'key', 'value'], data]);
     }
   }
   this.products = {
     get: function (data) {
       if (!data.ids || !data.ids.length) {
-        return [];
+        return { list: [], total: 0};
       }
       let where = '';
       for (let i = 0; i < data.ids.length; i++) {
         data.ids[i] = clean(data.ids[i]);
       }
       where = ` where id in (${data.ids.join(', ')}) `;
+      const total = data.ids.length;
       delete data.ids;
       let products = this.db.prepare(`select * from products${where} order by id asc limit :limit offset :offset`).all(data);
+      products = self.generic.getProductFlags.apply(this, [products]);
       products = self.generic.getTags.apply(this, ['products', products]);
-      return self.generic.getPrices.apply(this, [products]);
+      products = self.generic.getPrices.apply(this, [products]);
+      return { list: products, total }
     },
     find: function (data) {
       if (!['tags.value', 'prices.price'].includes(data.orderBy)) {
         throw 'invalid_orderBy';
-        return;
       }
       if (!['asc', 'desc'].includes(data.orderWay)) {
         throw 'invalid_orderWay';
-        return;
       }
       if (!data.where.length) {
+        const total = this.db.prepare(`select count(for_id) as total from tags group by for_id order by ${data.orderBy} ${data.orderWay}`).get();
         const ids = this.db.prepare(`select for_id as id from tags group by for_id order by ${data.orderBy} ${data.orderWay} limit :limit offset :offset`).all({
           limit: data.limit,
           offset: data.offset
         });
-        return ids;
+        return { list: ids, ...total };
       }
       let where = '';
       let params = {}
-      const tables = ['products', 'tags', 'prices'];
+      const tables = ['product_flags', 'tags', 'prices'];
       const logicOperators = ['and', 'or'];
       const operators = ['=', '<', '>', '<=', '>=', 'like'];
       let index = 0;
       let tagClauseCount = 0;
+      let usedClauses = {};
       for (let item of data.where) {
         if (!logicOperators.includes(item.groupOperator) || !logicOperators.includes(item.clauseOperator)) {
           throw 'invalid_operator';
-          return;
         }
         const groupClauses = [];
         for (let clause of item.clauses) {
           if (!operators.includes(clause.operator)) {
             throw 'invalid_operator';
-            return;
           }
           if (!tables.includes(clause.type)) {
             throw 'invalid_table';
-            return;
           }
+          usedClauses[clause.type] = true;
           const name = `var_${index}`;
           let column = '';
           column = `"${clean(clause.type)}".`;
@@ -171,20 +183,24 @@ module.exports = function (options) {
         where += `${groupStart}${operator}( ${groupWhere} )${groupEnd}`;
       }
       const query = `select tags.for_id as id from tags
-      inner join products on products.id = tags.for_id
-      inner join prices on prices.product_id = tags.for_id
-      where prices.currency = :currency
-        and tags.for_table = 'products'
+      ${usedClauses['product_flags'] ? 'inner join product_flags on product_flags.product_id = tags.for_id' : ''}
+      ${usedClauses['prices'] ? 'inner join prices on prices.product_id = tags.for_id' : ''}
+      where tags.for_table = 'products'
+        ${usedClauses['prices'] ? 'and prices.currency = :currency' : ''}
         and ${where}
       group by tags.for_id having count(tags.for_id) = ${tagClauseCount}
       order by ${data.orderBy} ${data.orderWay}
       limit :limit offset :offset`;
-      const found = this.db.prepare(query).all({
+      const sqlParams = {
         currency: data.currency,
         limit: data.limit,
         offset: data.offset,
         ...params
-      });
+      }
+      if (!usedClauses['prices']) {
+        delete sqlParams.currency;
+      }
+      const found = this.db.prepare(query).all(sqlParams);
       const ids = [];
       for (let item of found) {
         ids.push(item.id);
@@ -196,20 +212,70 @@ module.exports = function (options) {
       }]);
     },
     update: function (data) {
-      return self.generic.update.apply(this, ['products', ['id'], ['type', 'parent_type', 'stock'], data, {
-        noInsertPks: true
-      }]);
+      return self.generic.update.apply(this, ['products', ['id'], ['stock'], data]);
     }
   }
   this.cart = {
     get: function (data) {
-      return this.db.prepare('select * from cart where user_id = :user_id').all(data);
+      const cart = this.db.prepare('select * from cart_keys where uuid = :uuid').get({ uuid: data.uuid });
+      if (!cart || cart.key != data.key) {
+        throw 'invalid_uuid_key';
+      }
+      const list = this.db.prepare('select * from cart where uuid = :uuid').all({ uuid: data.uuid });
+      return { cart, list }
     },
     update: function (data) {
-      for (let i = 0; i < data.length; i++) {
-        data[i].created_at = new Date().toISOString();
+      try {
+        this.db.exec('begin');
+        if (data?.key.length < 36) {
+          throw 'short_key';
+        }
+        let uuid;
+        for (let i = 0; i < data.list.length; i++) {
+          if (!data.list[i].uuid) {
+            throw 'uuid_missing';
+          }
+          uuid ??= data.list[i].uuid;
+          if (data.list[i].uuid != uuid) {
+            throw 'different_uuids';
+          }
+        }
+        let cart = this.db.prepare('select * from cart_keys where uuid = :uuid').get({ uuid });
+        if (!cart) {
+          if (uuid.length < 36) {
+            throw 'short_uuid';
+          }
+          this.db.prepare('insert into cart_keys (uuid, key, updated_at) values (:uuid, :key, :updated_at)').run({
+            uuid,
+            key: data.key,
+            updated_at: new Date().toISOString()
+          });
+          cart = this.db.prepare('select * from cart_keys where uuid = :uuid').get({ uuid });
+        }
+        if (cart.key != data.key) {
+          throw 'invalid_uuid_key';
+        }
+        this.db.prepare('update cart_keys set updated_at = :updated_at where uuid = :uuid').run({
+          uuid,
+          updated_at: new Date().toISOString()
+        });
+        const result = self.generic.update.apply(this, ['cart', ['uuid', 'product_id'], ['user_id', 'parent_id', 'quantity', 'action'], data.list, {
+          skipBegin: true
+        }]);
+        this.db.exec('commit');
+        return result;
       }
-      return self.generic.update.apply(this, ['cart', ['user_id', 'product_id'], ['quantity', 'created_at'], data]);
+      catch (error) {
+        this.db.exec('rollback');
+        throw error;
+      }
+    },
+    clean: function (maxDuration) {
+      let maxTime = new Date();
+      maxTime.setTime(maxTime.getTime() - maxDuration);
+      maxTime = maxTime.toISOString();
+      this.db.prepare('delete from cart where uuid in (select uuid from cart_keys where updated_at < :maxTime)').run({ maxTime });
+      return this.db.prepare('delete from cart_keys where updated_at < :maxTime').run({ maxTime });
     }
   }
   this.currencies = {
@@ -247,11 +313,9 @@ module.exports = function (options) {
         if (result.count > 0) {
           this.db.exec('rollback');
           throw 'order_flow_has_orders';
-          return;
         }
         result = self.generic.update.apply(this, ['order_flows', ['id'], ['tree', 'active', 'created_at'], data, {
-          skipBegin: true,
-          noInsertPks: true
+          skipBegin: true
         }]);
         this.db.exec('commit');
         return result;
@@ -265,13 +329,14 @@ module.exports = function (options) {
   this.orders = {
     get: function (data, limit = 10, offset = 0) {
       let fields = cleanKeys(data);
-      return this.db.prepare(`select * from orders where ${fields.join(' and ')} limit :limit offset :offset`).all({ ...data, limit, offset });
+      const total = this.db.prepare(`select count(*) as total from orders where ${fields.join(' and ')}`).get();
+      const list = this.db.prepare(`select * from orders where ${fields.join(' and ')} limit :limit offset :offset`).all({ ...data, limit, offset });
+      return { list, ...total }
     },
     update: function (data) {
       data.created_at = new Date().toISOString();
       return self.generic.update.apply(this, ['orders', ['id'], ['flow_id', 'user_id', 'uuid', 'currency', 'payment', 'status', 'notes', 'created_at'], data, {
-        skipBegin: true,
-        noInsertPks: true
+        skipBegin: true
       }]);
     }
   }
@@ -280,7 +345,6 @@ module.exports = function (options) {
    * toSetColumns - array of columns which will be set apart from the pkColumns
    * options:
    *   skipBegin - if true does not start transaction
-   *   noInsertPks - if true does not insert primary key values (useful for auto incremented primary keys)
    */
   this.generic = {
     update: function (table, pkColumns, toSetColumns, data, options = {}) {
@@ -291,7 +355,6 @@ module.exports = function (options) {
         let selectWhere = [];
         let selectParams = {}
         const allColumns = pkColumns.concat(toSetColumns);
-        const insertColumns = options.noInsertPks ? toSetColumns : allColumns;
         let index = 0;
         const output = {
           inserted: 0,
@@ -315,7 +378,7 @@ module.exports = function (options) {
         const computeParams = (columns, data, prefix = '') => {
           const params = {}
           for (let column of columns) {
-            params[`${prefix != '' ? prefix + '_' : ''}${column}`] = data[column];
+            params[`${prefix != '' ? prefix + '_' : ''}${column}`] = data[column] ?? null;
           }
           return params;
         }
@@ -381,14 +444,14 @@ module.exports = function (options) {
           }
           else if (!item.remove) {
             delete item.remove;
-            insert.push(computeClause(insertColumns, index, ', ', { justValues: true }));
-            insertParams = { ...insertParams, ...computeParams(insertColumns, item, index) };
+            insert.push(computeClause(allColumns, index, ', ', { justValues: true }));
+            insertParams = { ...insertParams, ...computeParams(allColumns, item, index) };
             output.inserted++;
           }
           index++;
         }
         if (insert.length) {
-          this.db.prepare(`insert into ${table} (${insertColumns.join(', ')}) values ${insert.join(', ')}`).run(insertParams);
+          this.db.prepare(`insert into ${table} (${allColumns.join(', ')}) values ${insert.join(', ')}`).run(insertParams);
         }
         if (update.length) {
           for (let item of update) {
@@ -410,6 +473,22 @@ module.exports = function (options) {
         throw error;
       }
     },
+    getProductFlags: function (entries) {
+      const ids = [];
+      const map = {};
+      for (let i = 0; i < entries.length; i++) {
+        entries[i].product_flags = {};
+        ids.push(entries[i].id);
+        map[entries[i].id] = i;
+      }
+      const product_flags = this.db.prepare(`select * from product_flags where product_id in (${ids.join(', ')}) order by product_id asc`).all();
+      for (let item of product_flags) {
+        entries[map[item.product_id]].product_flags[item.key] ??= [];
+        item.value = parseNumber(item.value);
+        entries[map[item.product_id]].product_flags[item.key].push(item);
+      }
+      return entries;
+    },
     getTags: function (table, entries) {
       const ids = [];
       const map = {};
@@ -420,7 +499,9 @@ module.exports = function (options) {
       }
       const tags = this.db.prepare(`select * from tags where for_table = :table and for_id in (${ids.join(', ')}) order by for_id asc`).all({ table });
       for (let item of tags) {
-        entries[map[item.for_id]].tags[item.key] = parseNumber(item.value);
+        entries[map[item.for_id]].tags[item.key] ??= [];
+        item.value = parseNumber(item.value);
+        entries[map[item.for_id]].tags[item.key].push(item);
       }
       return entries;
     },

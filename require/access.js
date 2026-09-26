@@ -11,6 +11,8 @@ module.exports = {
     'signup',
     'login',
     'sendPasswordResetCode',
-    'resetPassword'
+    'resetPassword',
+    'getCart',
+    'updateCart'
   ]
 }

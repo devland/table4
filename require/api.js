@@ -27,20 +27,17 @@ module.exports = {
         body = JSON.parse(data);
         if (body.method == 'request' || !module.exports[body.method]) {
           throw 'method_not_found';
-          return;
         }
         request.table4 = { body };
         if (body.token) {
           const token = db.tokens.getFirst({ token: body.token });
           if (!token) {
             throw 'token_not_found';
-            return;
           }
           token.expires_at = new Date(token.expires_at);
           const user = db.users.getFirst({ id: token.user_id });
           if (!user) {
             throw 'token_user_not_found';
-            return;
           }
           request.table4.token = token;
           request.table4.user = user;
@@ -48,7 +45,6 @@ module.exports = {
         const now = new Date();
         if (request.table4.token && request.table4.token.expires_at < now) {
           throw 'token_expired';
-          return;
         }
         let allowed = access['everyone'];
         if (request.table4.user) {
@@ -57,11 +53,10 @@ module.exports = {
         const method = request.table4.body.method;
         if (!allowed.includes('*') && !allowed.includes(method)) {
           throw 'access_denied';
-          return;
         }
         await module.exports[body.method](request, response);
         const benchmarkTime = (performance.now() - benchmarkStart).toFixed(3);
-        log(`${request.url}/${body.method} [${response.statusCode}] (${benchmarkTime} ms, ip ${request.socket.remoteAddress})`);
+        log(`${request.url}/${body.method} [${response.statusCode}] (${benchmarkTime} ms, ${request.socket.remoteAddress})`);
       }
       catch (error) {
         handleRequest(response, error);
@@ -71,7 +66,7 @@ module.exports = {
           label = error;
           error = undefined;
         }
-        log(`[${label}] ${request.url}/${body.method} [${response.statusCode}] (${benchmarkTime} ms, ip ${request.socket.remoteAddress})`, error);
+        log(`[${label}] ${request.url}/${body.method} [${response.statusCode}] (${benchmarkTime} ms, ${request.socket.remoteAddress})`, error);
       }
     });
   },
@@ -94,12 +89,10 @@ module.exports = {
     const user = db.users.getFirst({ email: request.table4.body.input.email });
     if (!user) {
       throw 'wrong_email_password';
-      return;
     }
     const verified = passhash.verify(user.password, request.table4.body.input.password, Buffer.from(config.secret));
     if (!verified) {
       throw 'wrong_email_password';
-      return;
     }
     db.tokens.clean(user.id);
     const token = crypto.randomUUID();
@@ -109,7 +102,6 @@ module.exports = {
     }, config.tokenDuration);
     if (!result.lastInsertRowid) {
       throw new Error(result);
-      return;
     }
     handleRequest(response, null, { token });
   },
@@ -119,11 +111,9 @@ module.exports = {
     const verified = passhash.verify(user.password, input.password, Buffer.from(config.secret));
     if (!verified) {
       throw 'wrong_password';
-      return;
     }
     if (input.newPassword != input.retypedNewPassword) {
       throw 'retyped_mismatch';
-      return;
     }
     const hash = passhash.hash(input.newPassword, Buffer.from(config.secret));
     const result = db.users.setPassword({
@@ -151,7 +141,6 @@ module.exports = {
       }, config.tokenDuration);
       if (!result.lastInsertRowid) {
         throw new Error(result);
-        return;
       }
       const lang = this.languages[input.language] ? this.languages[input.language] : this.languages['en'];
       result = await email.send({
@@ -161,7 +150,6 @@ module.exports = {
       });
       if (!result.id) {
         throw new Error(result);
-        return;
       }
     }
     handleRequest(response, null, 'done');
@@ -174,17 +162,14 @@ module.exports = {
     });
     if (!resetCode) {
       throw 'reset_code_not_found';
-      return;
     }
     let now = new Date();
     resetCode.expires_at = new Date(resetCode.expires_at);
     if (resetCode.expires_at < now) {
       throw 'reset_code_expired';
-      return;
     }
     if (input.newPassword != input.retypedNewPassword) {
       throw 'retyped_mismatch';
-      return;
     }
     const hash = passhash.hash(input.newPassword, Buffer.from(config.secret));
     let result = db.users.setPassword({
@@ -208,7 +193,6 @@ module.exports = {
     const verified = passhash.verify(user.password, input.password, Buffer.from(config.secret));
     if (!verified) {
       throw 'wrong_password';
-      return;
     }
     db.reset_codes.clean(user.id);
     const code = crypto.randomUUID();
@@ -220,7 +204,6 @@ module.exports = {
     }, config.tokenDuration);
     if (!result.lastInsertRowid) {
       throw new Error(result);
-      return;
     }
     const lang = this.languages[input.language] ? this.languages[input.language] : this.languages['en'];
     result = await email.send({
@@ -230,7 +213,6 @@ module.exports = {
     });
     if (!result.id) {
       throw new Error(result);
-      return;
     }
     handleRequest(response, null, 'done');
   },
@@ -242,13 +224,11 @@ module.exports = {
     });
     if (!resetCode) {
       throw 'reset_code_not_found';
-      return;
     }
     let now = new Date();
     resetCode.expires_at = new Date(resetCode.expires_at);
     if (resetCode.expires_at < now) {
       throw 'reset_code_expired';
-      return;
     }
     resetCode.data = JSON.parse(resetCode.data);
     let result = db.users.set({
@@ -292,6 +272,16 @@ module.exports = {
   'updateTagKeys': (request, response) => {
     const input = request.table4.body.input;
     const result = db.tagKeys.update(input);
+    handleRequest(response, null, result);
+  },
+  'getProductFlags': (request, response) => {
+    const input = request.table4.body.input;
+    const result = db.product_flags.get(input);
+    handleRequest(response, null, result);
+  },
+  'updateProductFlags': (request, response) => {
+    const input = request.table4.body.input;
+    const result = db.product_flags.update(input);
     handleRequest(response, null, result);
   },
   'getTags': (request, response) => {
@@ -345,6 +335,7 @@ module.exports = {
   },
   'updateCart': (request, response) => {
     const input = request.table4.body.input;
+    db.cart.clean(config.tokenDuration);
     const result = db.cart.update(input);
     handleRequest(response, null, result);
   },
