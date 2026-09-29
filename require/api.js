@@ -56,7 +56,7 @@ module.exports = {
         }
         await module.exports[body.method](request, response);
         const benchmarkTime = (performance.now() - benchmarkStart).toFixed(3);
-        log(`${request.url}/${body.method} [${response.statusCode}] (${benchmarkTime} ms, ${request.socket.remoteAddress})`);
+        log(`[${response.statusCode}] ${request.url}/${body.method} (${benchmarkTime} ms, ${request.socket.remoteAddress})`);
       }
       catch (error) {
         handleRequest(response, error);
@@ -313,9 +313,9 @@ module.exports = {
     const result = db.prices.update(input);
     handleRequest(response, null, result);
   },
-  'getProducts': (request, response) => {
+  'getProductsByIds': (request, response) => {
     const input = request.table4.body.input;
-    const result = db.products.get(input);
+    const result = db.products.getByIds(input);
     handleRequest(response, null, result);
   },
   'findProducts': (request, response) => {

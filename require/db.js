@@ -14,6 +14,9 @@ module.exports = function (options) {
     return fields;
   }
   const self = this;
+  const checkProducts = (list) => {
+    // check if cart/order products obey product_flags rules
+  }
   this.tokens = {
     getFirst: function (data) {
       return this.db.prepare('select * from tokens where token = :token').get(data);
@@ -109,7 +112,7 @@ module.exports = function (options) {
     }
   }
   this.products = {
-    get: function (data) {
+    getByIds: function (data) {
       if (!data.ids || !data.ids.length) {
         return { list: [], total: 0};
       }
@@ -127,41 +130,37 @@ module.exports = function (options) {
       return { list: products, total }
     },
     find: function (data) {
-      if (!['tags.value', 'prices.price'].includes(data.orderBy)) {
-        throw 'invalid_orderBy';
+      const canOrderBy = ['products.id', 'product_flags.value', 'tags.value', 'prices.value'];
+      if (!canOrderBy.includes(data.orderBy)) {
+        throw 'wrong_orderBy';
       }
       if (!['asc', 'desc'].includes(data.orderWay)) {
-        throw 'invalid_orderWay';
+        throw 'wrong_orderWay';
       }
-      if (!data.where.length) {
-        const total = this.db.prepare(`select count(for_id) as total from tags group by for_id order by ${data.orderBy} ${data.orderWay}`).get();
-        const ids = this.db.prepare(`select for_id as id from tags group by for_id order by ${data.orderBy} ${data.orderWay} limit :limit offset :offset`).all({
-          limit: data.limit,
-          offset: data.offset
-        });
-        return { list: ids, ...total };
-      }
-      let where = '';
+      let clauses = '';
+      let where = [];
       let params = {}
-      const tables = ['product_flags', 'tags', 'prices'];
+      const tables = ['products', 'product_flags', 'tags', 'prices'];
       const logicOperators = ['and', 'or'];
-      const operators = ['=', '<', '>', '<=', '>=', 'like'];
+      const comparisonOperators = ['=', '<>', '<', '>', '<=', '>=', 'like', 'in'];
       let index = 0;
-      let tagClauseCount = 0;
       let usedClauses = {};
       for (let item of data.where) {
-        if (!logicOperators.includes(item.groupOperator) || !logicOperators.includes(item.clauseOperator)) {
-          throw 'invalid_operator';
+        if (!logicOperators.includes(item.logicOperator)) {
+          throw 'wrong_group_logic_operator';
         }
-        const groupClauses = [];
+        let groupClauses = '';
         for (let clause of item.clauses) {
-          if (!operators.includes(clause.operator)) {
-            throw 'invalid_operator';
+          if (!logicOperators.includes(clause.logicOperator)) {
+            throw 'wrong_clause_logic_operator';
+          }
+          if (!comparisonOperators.includes(clause.operator)) {
+            throw 'wrong_comparison_operator';
           }
           if (!tables.includes(clause.type)) {
-            throw 'invalid_table';
+            throw 'wrong_table';
           }
-          usedClauses[clause.type] = true;
+          usedClauses[clause.type] ??= true;
           const name = `var_${index}`;
           let column = '';
           column = `"${clean(clause.type)}".`;
@@ -169,113 +168,56 @@ module.exports = function (options) {
           if (clause.number) {
             column = `cast(${column} as numeric)`;
           }
-          groupClauses.push(`${column} ${clause.operator} :${name}`);
-          params[name] = clause.value;
-          index++;
-          if (clause.type == 'tags' && clause.key == 'key') {
-            tagClauseCount++;
+          if (clause.operator == 'in') {
+            if (!Array.isArray(clause.value)) {
+              throw 'in_clause_value_not_array';
+            }
+            const inValues = [];
+            for (let valueItem of clause.value) {
+              inValues.push(`'${clean(valueItem)}'`);
+            }
+            groupClauses += `${groupClauses ? ` ${clause.logicOperator} ` : ''}${column} ${clause.operator} (${inValues.join(', ')})`;
           }
+          else {
+            groupClauses += `${groupClauses ? ` ${clause.logicOperator} ` : ''}${column} ${clause.operator} :${name}`;
+            params[name] = clause.value;
+          }
+          index++;
         }
-        const groupWhere = groupClauses.join(` ${item.clauseOperator} `);
-        const operator = where ? ` ${item.groupOperator} ` : '';
         const groupStart = item.groupStart ? '( ' : '';
         const groupEnd = item.groupEnd ? ' )' : '';
-        where += `${groupStart}${operator}( ${groupWhere} )${groupEnd}`;
+        clauses += `${groupStart}${clauses ? ` ${item.logicOperator} ` : ''}( ${groupClauses} )${groupEnd}`;
       }
-      const query = `select tags.for_id as id from tags
-      ${usedClauses['product_flags'] ? 'inner join product_flags on product_flags.product_id = tags.for_id' : ''}
-      ${usedClauses['prices'] ? 'inner join prices on prices.product_id = tags.for_id' : ''}
-      where tags.for_table = 'products'
-        ${usedClauses['prices'] ? 'and prices.currency = :currency' : ''}
-        and ${where}
-      group by tags.for_id having count(tags.for_id) = ${tagClauseCount}
-      order by ${data.orderBy} ${data.orderWay}
-      limit :limit offset :offset`;
-      const sqlParams = {
-        currency: data.currency,
-        limit: data.limit,
-        offset: data.offset,
-        ...params
+      if (clauses) {
+        where.push(clauses);
       }
+      if (usedClauses['product_flags']) {
+        where.unshift('tags.for_table = \'products\'');
+      }
+      const query = `select products.id from products
+      left join tags on products.id = tags.for_id
+      left join product_flags on products.id = product_flags.product_id
+      left join prices on products.id = prices.product_id
+      ${where.length ? 'where ' + where.join(' and ') : ''}
+      group by products.id
+      order by ${data.orderBy} ${data.orderWay}`;
+      const totalQuery = `select count(*) as total from (${query})`;
       if (!usedClauses['prices']) {
-        delete sqlParams.currency;
+        delete params.currency;
       }
-      const found = this.db.prepare(query).all(sqlParams);
-      const ids = [];
-      for (let item of found) {
-        ids.push(item.id);
-      }
-      return self.methods.products.get.apply(this, [{
-        ids,
+      const total = this.db.prepare(totalQuery).get(params).total;
+      let products = this.db.prepare(`${query} limit :limit offset :offset`).all({
+        ...params,
         limit: data.limit,
         offset: data.offset
-      }]);
+      });
+      products = self.generic.getProductFlags.apply(this, [products]);
+      products = self.generic.getTags.apply(this, ['products', products]);
+      products = self.generic.getPrices.apply(this, [products]);
+      return { list: products, total }
     },
     update: function (data) {
       return self.generic.update.apply(this, ['products', ['id'], ['stock'], data]);
-    }
-  }
-  this.cart = {
-    get: function (data) {
-      const cart = this.db.prepare('select * from cart_keys where uuid = :uuid').get({ uuid: data.uuid });
-      if (!cart || cart.key != data.key) {
-        throw 'invalid_uuid_key';
-      }
-      const list = this.db.prepare('select * from cart where uuid = :uuid').all({ uuid: data.uuid });
-      return { cart, list }
-    },
-    update: function (data) {
-      try {
-        this.db.exec('begin');
-        if (data?.key.length < 36) {
-          throw 'short_key';
-        }
-        let uuid;
-        for (let i = 0; i < data.list.length; i++) {
-          if (!data.list[i].uuid) {
-            throw 'uuid_missing';
-          }
-          uuid ??= data.list[i].uuid;
-          if (data.list[i].uuid != uuid) {
-            throw 'different_uuids';
-          }
-        }
-        let cart = this.db.prepare('select * from cart_keys where uuid = :uuid').get({ uuid });
-        if (!cart) {
-          if (uuid.length < 36) {
-            throw 'short_uuid';
-          }
-          this.db.prepare('insert into cart_keys (uuid, key, updated_at) values (:uuid, :key, :updated_at)').run({
-            uuid,
-            key: data.key,
-            updated_at: new Date().toISOString()
-          });
-          cart = this.db.prepare('select * from cart_keys where uuid = :uuid').get({ uuid });
-        }
-        if (cart.key != data.key) {
-          throw 'invalid_uuid_key';
-        }
-        this.db.prepare('update cart_keys set updated_at = :updated_at where uuid = :uuid').run({
-          uuid,
-          updated_at: new Date().toISOString()
-        });
-        const result = self.generic.update.apply(this, ['cart', ['uuid', 'product_id'], ['user_id', 'parent_id', 'quantity', 'action'], data.list, {
-          skipBegin: true
-        }]);
-        this.db.exec('commit');
-        return result;
-      }
-      catch (error) {
-        this.db.exec('rollback');
-        throw error;
-      }
-    },
-    clean: function (maxDuration) {
-      let maxTime = new Date();
-      maxTime.setTime(maxTime.getTime() - maxDuration);
-      maxTime = maxTime.toISOString();
-      this.db.prepare('delete from cart where uuid in (select uuid from cart_keys where updated_at < :maxTime)').run({ maxTime });
-      return this.db.prepare('delete from cart_keys where updated_at < :maxTime').run({ maxTime });
     }
   }
   this.currencies = {
@@ -338,6 +280,69 @@ module.exports = function (options) {
       return self.generic.update.apply(this, ['orders', ['id'], ['flow_id', 'user_id', 'uuid', 'currency', 'payment', 'status', 'notes', 'created_at'], data, {
         skipBegin: true
       }]);
+    }
+  }
+  this.cart = {
+    get: function (data) {
+      const cart = this.db.prepare('select * from cart_keys where uuid = :uuid').get({ uuid: data.uuid });
+      if (!cart || cart.key != data.key) {
+        throw 'wrong_uuid_key';
+      }
+      const list = this.db.prepare('select * from cart where uuid = :uuid').all({ uuid: data.uuid });
+      return { cart, list }
+    },
+    update: function (data) {
+      try {
+        this.db.exec('begin');
+        if (data?.key.length < 36) {
+          throw 'short_key';
+        }
+        let uuid;
+        for (let i = 0; i < data.list.length; i++) {
+          if (!data.list[i].uuid) {
+            throw 'uuid_missing';
+          }
+          uuid ??= data.list[i].uuid;
+          if (data.list[i].uuid != uuid) {
+            throw 'different_uuids';
+          }
+        }
+        let cart = this.db.prepare('select * from cart_keys where uuid = :uuid').get({ uuid });
+        if (!cart) {
+          if (uuid.length < 36) {
+            throw 'short_uuid';
+          }
+          this.db.prepare('insert into cart_keys (uuid, key, updated_at) values (:uuid, :key, :updated_at)').run({
+            uuid,
+            key: data.key,
+            updated_at: new Date().toISOString()
+          });
+          cart = this.db.prepare('select * from cart_keys where uuid = :uuid').get({ uuid });
+        }
+        if (cart.key != data.key) {
+          throw 'wrong_uuid_key';
+        }
+        this.db.prepare('update cart_keys set updated_at = :updated_at where uuid = :uuid').run({
+          uuid,
+          updated_at: new Date().toISOString()
+        });
+        const result = self.generic.update.apply(this, ['cart', ['uuid', 'product_id'], ['user_id', 'parent_id', 'quantity', 'action'], data.list, {
+          skipBegin: true
+        }]);
+        this.db.exec('commit');
+        return result;
+      }
+      catch (error) {
+        this.db.exec('rollback');
+        throw error;
+      }
+    },
+    clean: function (maxDuration) {
+      let maxTime = new Date();
+      maxTime.setTime(maxTime.getTime() - maxDuration);
+      maxTime = maxTime.toISOString();
+      this.db.prepare('delete from cart where uuid in (select uuid from cart_keys where updated_at < :maxTime)').run({ maxTime });
+      return this.db.prepare('delete from cart_keys where updated_at < :maxTime').run({ maxTime });
     }
   }
   /*
@@ -485,7 +490,10 @@ module.exports = function (options) {
       for (let item of product_flags) {
         entries[map[item.product_id]].product_flags[item.key] ??= [];
         item.value = parseNumber(item.value);
-        entries[map[item.product_id]].product_flags[item.key].push(item);
+        entries[map[item.product_id]].product_flags[item.key].push({
+          id: item.id,
+          value: item.value
+        });
       }
       return entries;
     },
@@ -501,7 +509,11 @@ module.exports = function (options) {
       for (let item of tags) {
         entries[map[item.for_id]].tags[item.key] ??= [];
         item.value = parseNumber(item.value);
-        entries[map[item.for_id]].tags[item.key].push(item);
+        entries[map[item.for_id]].tags[item.key].push({
+          id: item.id,
+          language: item.language,
+          value: item.value
+        });
       }
       return entries;
     },
