@@ -17,20 +17,6 @@ CREATE TABLE "prices" (
 CREATE INDEX "tokens-user_id" ON "tokens" (
 	"user_id"	ASC
 );
-CREATE TABLE "order_history" (
-	"order_id"	INTEGER NOT NULL,
-	"status"	TEXT NOT NULL,
-	"notes"	TEXT,
-	"updated_at"	TEXT NOT NULL
-);
-CREATE INDEX "order_history-order_id_updated_at" ON "order_history" (
-	"order_id"	ASC,
-	"updated_at"	DESC
-);
-CREATE INDEX "order_history-status_updated_at" ON "order_history" (
-	"status"	ASC,
-	"updated_at"	DESC
-);
 CREATE TABLE "reset_codes" (
 	"code"	TEXT NOT NULL,
 	"user_id"	INTEGER NOT NULL,
@@ -44,21 +30,6 @@ CREATE INDEX "reset_codes-created_at" ON "reset_codes" (
 );
 CREATE INDEX "reset_codes-user_id" ON "reset_codes" (
 	"user_id"	ASC
-);
-CREATE TABLE "cart" (
-	"uuid"	TEXT NOT NULL,
-	"user_id"	INTEGER,
-	"product_id"	INTEGER NOT NULL,
-	"parent_id"	INTEGER,
-	"quantity"	REAL NOT NULL DEFAULT 0,
-	"action"	TEXT NOT NULL DEFAULT 'add',
-	PRIMARY KEY("uuid","product_id")
-);
-CREATE TABLE "cart_keys" (
-	"uuid"	TEXT NOT NULL,
-	"key"	TEXT NOT NULL,
-	"updated_at"	TEXT NOT NULL,
-	PRIMARY KEY("uuid")
 );
 CREATE TABLE "currencies" (
 	"code"	TEXT NOT NULL,
@@ -201,6 +172,37 @@ CREATE INDEX "users-email" ON "users" (
 CREATE INDEX "users-type" ON "users" (
 	"type"	ASC
 );
-CREATE INDEX "cart_keys-updated_at" ON "cart_keys" (
+CREATE TABLE "order_history" (
+	"id"	INTEGER NOT NULL,
+	"order_id"	INTEGER NOT NULL,
+	"status"	TEXT NOT NULL,
+	"notes"	TEXT,
+	"updated_at"	TEXT NOT NULL,
+	PRIMARY KEY("id")
+);
+CREATE INDEX "order_history-order_id_updated_at" ON "order_history" (
+	"order_id"	ASC,
+	"updated_at"	DESC
+);
+CREATE INDEX "order_history-status_updated_at" ON "order_history" (
+	"status"	ASC,
+	"updated_at"	DESC
+);
+CREATE TABLE "cart_items" (
+	"uuid"	TEXT NOT NULL,
+	"product_id"	INTEGER NOT NULL,
+	"parent_id"	INTEGER,
+	"quantity"	REAL NOT NULL DEFAULT 0,
+	"action"	TEXT NOT NULL DEFAULT 'add',
+	PRIMARY KEY("uuid","product_id")
+);
+CREATE TABLE "carts" (
+	"uuid"	TEXT NOT NULL,
+	"key"	TEXT NOT NULL,
+	"currency"	TEXT NOT NULL,
+	"updated_at"	TEXT NOT NULL,
+	PRIMARY KEY("uuid")
+);
+CREATE INDEX "carts-updated_at" ON "carts" (
 	"updated_at"	DESC
 );

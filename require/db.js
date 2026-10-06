@@ -1,22 +1,7 @@
 module.exports = function (options) {
   const { DatabaseSync } = require('node:sqlite');
   const { parseNumber, clean } = require('./utils.js');
-  const cleanKeys = (data) => {
-    const fields = [];
-    for (let key of Object.keys(data)) {
-      if (typeof data[key] == 'undefined') {
-        delete data[key];
-        continue;
-      }
-      const name = clean(key);
-      fields.push(`"${name}" = :${name}`);
-    }
-    return fields;
-  }
   const self = this;
-  const checkProducts = (list) => {
-    // check if cart/order products obey product_flags rules
-  }
   this.tokens = {
     getFirst: function (data) {
       return this.db.prepare('select * from tokens where token = :token').get(data);
@@ -123,7 +108,11 @@ module.exports = function (options) {
       where = ` where id in (${data.ids.join(', ')}) `;
       const total = data.ids.length;
       delete data.ids;
-      let products = this.db.prepare(`select * from products${where} order by id asc limit :limit offset :offset`).all(data);
+      let limitOffset = '';
+      if (typeof data.limit != 'undefined' && typeof data.offset != 'undefined') {
+        limitOffset = ' limit :limit offset :offset';
+      }
+      let products = this.db.prepare(`select * from products${where} order by id asc${limitOffset}`).all(data);
       products = self.generic.getProductFlags.apply(this, [products]);
       products = self.generic.getTags.apply(this, ['products', products]);
       products = self.generic.getPrices.apply(this, [products]);
@@ -253,7 +242,7 @@ module.exports = function (options) {
         }
         let result = this.db.prepare(`select count(*) as count from orders where flow_id in (${ids.join(', ')})`).get();
         if (result.count > 0) {
-          this.db.exec('rollback');
+          rollback(this.db);
           throw 'order_flow_has_orders';
         }
         result = self.generic.update.apply(this, ['order_flows', ['id'], ['tree', 'active', 'created_at'], data, {
@@ -263,7 +252,7 @@ module.exports = function (options) {
         return result;
       }
       catch (error) {
-        this.db.exec('rollback');
+        rollback(this.db);
         throw error;
       }
     }
@@ -280,15 +269,27 @@ module.exports = function (options) {
       return self.generic.update.apply(this, ['orders', ['id'], ['flow_id', 'user_id', 'uuid', 'currency', 'payment', 'status', 'notes', 'created_at'], data, {
         skipBegin: true
       }]);
+    },
+    create: function (data) {
+      try {
+        this.db.exec('begin');
+        const basket = self.cart.get.apply(this, [data]);
+        checkProducts.apply(this, [basket]);
+        this.db.exec('commit');
+      }
+      catch (error) {
+        rollback(this.db);
+        throw error;
+      }
     }
   }
   this.cart = {
     get: function (data) {
-      const cart = this.db.prepare('select * from cart_keys where uuid = :uuid').get({ uuid: data.uuid });
+      const cart = this.db.prepare('select * from carts where uuid = :uuid').get({ uuid: data.uuid });
       if (!cart || cart.key != data.key) {
         throw 'wrong_uuid_key';
       }
-      const list = this.db.prepare('select * from cart where uuid = :uuid').all({ uuid: data.uuid });
+      const list = this.db.prepare('select * from cart_items where uuid = :uuid').all({ uuid: data.uuid });
       return { cart, list }
     },
     update: function (data) {
@@ -307,33 +308,35 @@ module.exports = function (options) {
             throw 'different_uuids';
           }
         }
-        let cart = this.db.prepare('select * from cart_keys where uuid = :uuid').get({ uuid });
+        let cart = this.db.prepare('select * from carts where uuid = :uuid').get({ uuid });
         if (!cart) {
           if (uuid.length < 36) {
             throw 'short_uuid';
           }
-          this.db.prepare('insert into cart_keys (uuid, key, updated_at) values (:uuid, :key, :updated_at)').run({
+          this.db.prepare('insert into carts (uuid, key, currency, updated_at) values (:uuid, :key, :currency, :updated_at)').run({
             uuid,
             key: data.key,
+            currency: data.currency,
             updated_at: new Date().toISOString()
           });
-          cart = this.db.prepare('select * from cart_keys where uuid = :uuid').get({ uuid });
+          cart = this.db.prepare('select * from carts where uuid = :uuid').get({ uuid });
         }
         if (cart.key != data.key) {
           throw 'wrong_uuid_key';
         }
-        this.db.prepare('update cart_keys set updated_at = :updated_at where uuid = :uuid').run({
+        this.db.prepare('update carts set currency = :currency, updated_at = :updated_at where uuid = :uuid').run({
           uuid,
+          currency: data.currency,
           updated_at: new Date().toISOString()
         });
-        const result = self.generic.update.apply(this, ['cart', ['uuid', 'product_id'], ['user_id', 'parent_id', 'quantity', 'action'], data.list, {
+        const result = self.generic.update.apply(this, ['cart_items', ['uuid', 'product_id'], ['parent_id', 'quantity', 'action'], data.list, {
           skipBegin: true
         }]);
         this.db.exec('commit');
         return result;
       }
       catch (error) {
-        this.db.exec('rollback');
+        rollback(this.db);
         throw error;
       }
     },
@@ -341,8 +344,8 @@ module.exports = function (options) {
       let maxTime = new Date();
       maxTime.setTime(maxTime.getTime() - maxDuration);
       maxTime = maxTime.toISOString();
-      this.db.prepare('delete from cart where uuid in (select uuid from cart_keys where updated_at < :maxTime)').run({ maxTime });
-      return this.db.prepare('delete from cart_keys where updated_at < :maxTime').run({ maxTime });
+      this.db.prepare('delete from cart_items where uuid in (select uuid from carts where updated_at < :maxTime)').run({ maxTime });
+      return this.db.prepare('delete from carts where updated_at < :maxTime').run({ maxTime });
     }
   }
   /*
@@ -473,7 +476,7 @@ module.exports = function (options) {
       }
       catch (error) {
         if (!options.skipBegin) {
-          this.db.exec('rollback');
+          rollback(this.db);
         }
         throw error;
       }
@@ -532,15 +535,106 @@ module.exports = function (options) {
       return entries;
     }
   }
+  const arrayIncludesSome = (includer, some) => {
+    for (let item of some) {
+      if (includer.includes(item)) {
+        return true;
+      }
+    }
+    return false;
+  }
+  const cleanKeys = (data) => {
+    const fields = [];
+    for (let key of Object.keys(data)) {
+      if (typeof data[key] == 'undefined') {
+        delete data[key];
+        continue;
+      }
+      const name = clean(key);
+      fields.push(`"${name}" = :${name}`);
+    }
+    return fields;
+  }
+  const checkProducts = function (basket) {
+    const actions = ['add', 'remove'];
+    const ids = [];
+    for (let item of basket.list) {
+      ids.push(item.product_id);
+    }
+    const products = self.products.getByIds.apply(this, [{ ids }]).list;
+    const map = {};
+    for (let item of products) {
+      map[item.id] = item;
+      for (let key of Object.keys(item.product_flags)) {
+        const values = [];
+        for (let flag of item.product_flags[key]) {
+          values.push(flag.value);
+        }
+        item.product_flags[key] = values;
+      }
+    }
+    for (let item of basket.list) {
+      const id = item.product_id;
+      const pid = item.parent_id;
+      let hasParent = false;
+      if (!actions.includes(item.action)) {
+        throw `wrong_action@product_id=${id}`;
+      }
+      if (!map[id]) {
+        throw `missing_product_entry@product_id=${id}`;
+      }
+      if (typeof map[id].prices[basket.cart.currency] == 'undefined') {
+        throw `missing_price@product_id=${id},currency=${basket.cart.currency}`;
+      }
+      if (pid) {
+        if (!map[pid]) {
+          throw `missing_parent_entry@product_id=${id},parent_id=${pid}`;
+        }
+        if (!map[id].product_flags.parent_type ||
+        !map[pid].product_flags.type ||
+        !arrayIncludesSome(map[pid].product_flags.type, map[id].product_flags.parent_type)) {
+          throw `missing_parent_type_flag@product_id=${id},parent_id=${pid}`;
+        }
+        hasParent = true;
+      }
+      if (item.action == 'add') {
+        if (map[id].stock > 0 && map[id].stock - item.quantity < 0) {
+          throw `insufficient_stock@product_id=${id}`;
+        }
+      }
+      if (item.action == 'remove') {
+        if (!pid) {
+          throw `cannot_remove_parent_product@product_id=${id}`;
+        }
+        if (!hasParent) {
+          throw `cannot_remove_product_without_parent@product_id=${id}`;
+        }
+        if (!map[id].product_flags.active_parent_type ||
+        !arrayIncludesSome(map[pid].product_flags.type, map[id].product_flags.active_parent_type)) {
+          throw `missing_active_parent_type_flag@product_id=${id},parent_id=${pid}`;
+        }
+      }
+    }
+  }
+  const rollback = (db) => {
+    if (db && db.isOpen && db.isTransaction) {
+      db.exec('rollback');
+    }
+  }
   // run each method within its own db instance
   const wrap = (table, method) => {
     this.methods ??= {}; // preserve db methods without own db connection
     this.methods[table] ??= {};
     this.methods[table][method] = this[table][method];
     this[table][method] = function () {
-      this.db = new DatabaseSync(options.dbPath);
+      if (!this.db) {
+        this.db = new DatabaseSync(options.dbPath);
+      }
       const result = self.methods[table][method].apply(this, arguments);
-      this.db.close();
+      if (this.db && this.db.isOpen && !this.db.isTransaction) {
+        this.db.close();
+        delete this.db;
+      }
       return result;
     }
   }

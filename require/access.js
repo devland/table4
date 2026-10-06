@@ -13,6 +13,7 @@ module.exports = {
     'sendPasswordResetCode',
     'resetPassword',
     'getCart',
-    'updateCart'
+    'updateCart',
+    'createOrder'
   ]
 }

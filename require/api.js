@@ -66,7 +66,7 @@ module.exports = {
           label = error;
           error = undefined;
         }
-        log(`[${label}] ${request.url}/${body.method} [${response.statusCode}] (${benchmarkTime} ms, ${request.socket.remoteAddress})`, error);
+        log(`[${response.statusCode}] [${label}] ${request.url}/${body.method} (${benchmarkTime} ms, ${request.socket.remoteAddress})`, error);
       }
     });
   },
@@ -330,6 +330,7 @@ module.exports = {
   },
   'getCart': (request, response) => {
     const input = request.table4.body.input;
+    db.cart.clean(config.tokenDuration);
     const result = db.cart.get(input);
     handleRequest(response, null, result);
   },
@@ -359,10 +360,14 @@ module.exports = {
     handleRequest(response, null, result);
   },
   'updateOrders': (request, response) => {
-    // check if user owns order
     const input = request.table4.body.input;
     const result = db.orders.update(input);
     handleRequest(response, null, result);
   },
+  'createOrder': (request, response) => {
+    const input = request.table4.body.input;
+    const result = db.orders.create(input);
+    handleRequest(response, null, result);
+  }
 }
 loadLanguages();
