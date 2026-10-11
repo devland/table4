@@ -1,0 +1,135 @@
+// WARNING
+// DO NOT CHANGE THIS FILE UNLESS YOU ARE SURE OF WHAT YOU ARE DOING
+{
+  "created": {
+    "label": "created",
+    "stages": ["created"],
+    "canMoveTo": {
+      "payment_pending": {
+        "access": ["client"]
+      },
+      "cancelled": {
+        "access": ["client", "waiter", "manager"]
+      }
+    }
+  },
+  "payment_pending": {
+    "label": "payment_pending",
+    "stages": ["payment_pending"],
+    "canMoveTo": {
+      "paid": {
+        "access": ["system"]
+      },
+      "payment_failed": {
+        "access": ["system"]
+      }
+    }
+  },
+  "payment_failed": {
+    "label": "payment_failed",
+    "stages": ["payment_failed"],
+    "canMoveTo": {
+      "payment_pending": {
+        "access": ["client"]
+      },
+      "cancelled": {
+        "access": ["client", "waiter", "manager"]
+      }
+    }
+  },
+  "paid": {
+    "label": "paid",
+    "stages": ["paid"],
+    "canMoveTo": {
+      "preparing": {
+        "access": ["chef"]
+      },
+      "cancelled": {
+        "access": ["client", "waiter", "manager"]
+      }
+    }
+  },
+  "preparing": {
+    "label": "preparing",
+    "canMoveTo": {
+      "ready_to_serve": {
+        "access": ["chef"]
+      },
+      "cancelled": {
+        "access": ["chef"]
+      }
+    }
+  },
+  "ready_to_serve": {
+    "label": "ready_to_serve",
+    "canMoveTo": {
+      "served": {
+        "access": ["waiter"]
+      },
+      "cancelled": {
+        "access": ["chef", "waiter"]
+      }
+    }
+  },
+  "served": {
+    "label": "served",
+    "canMoveTo": {
+      "return_pending": {
+        "access": ["client", "waiter", "manager"]
+      },
+      "cancelled": {
+        "access": ["waiter", "manager"]
+      }
+    }
+  },
+  "return_pending": {
+    "label": "return_pending",
+    "canMoveTo": {
+      "returned": {
+        "access": ["waiter", "manager"]
+      },
+      "cancelled": {
+        "access": ["waiter", "manager"]
+      }
+    }
+  },
+  "returned": {
+    "label": "returned",
+    "canMoveTo": {
+      "preparing": {
+        "access": ["chef"]
+      },
+      "cancelled": {
+        "access": ["chef", "manager"]
+      }
+    }
+  },
+  "cancelled": {
+    "label": "cancelled",
+    "canMoveTo": {
+      "pending_refund": {
+        "access": ["waiter", "manager"]
+      }
+    }
+  },
+  "pending_refund": {
+    "label": "pending_refund",
+    "stages": ["pending_refund"],
+    "canMoveTo": {
+      "refund_failed": {
+        "access": ["system"]
+      },
+      "refunded": {
+        "access": ["system"]
+      }
+    }
+  },
+  "refund_failed": {
+    "label": "refund_failed",
+    "stages": ["refund_failed"]
+  },
+  "refunded": {
+    "label": "refunded",
+    "stages": ["refunded"]
+  }
+}

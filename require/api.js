@@ -77,7 +77,7 @@ module.exports = {
       const result = db.users.add({
         email: request.table4.body.input.email,
         password: hash,
-        type: 'user'
+        type: config.defaultUserType
       });
       handleRequest(response, null, result);
     }
@@ -338,16 +338,6 @@ module.exports = {
     const input = request.table4.body.input;
     db.cart.clean(config.tokenDuration);
     const result = db.cart.update(input);
-    handleRequest(response, null, result);
-  },
-  'getOrderFlows': (request, response) => {
-    const input = request.table4.body.input;
-    const result = db.orderFlows.get(input);
-    handleRequest(response, null, result);
-  },
-  'updateOrderFlows': (request, response) => {
-    const input = request.table4.body.input;
-    const result = db.orderFlows.update(input);
     handleRequest(response, null, result);
   },
   'getOrders': (request, response) => {

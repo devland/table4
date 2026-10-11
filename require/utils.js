@@ -10,6 +10,26 @@ module.exports = {
       return parseFloat(input);
     }
   },
+  cleanKeys: (data) => {
+    const fields = [];
+    for (let key of Object.keys(data)) {
+      if (typeof data[key] == 'undefined') {
+        delete data[key];
+        continue;
+      }
+      const name = module.exports.clean(key);
+      fields.push(`"${name}" = :${name}`);
+    }
+    return fields;
+  },
+  arrayIncludesSome: (includer, some) => {
+    for (let item of some) {
+      if (includer.includes(item)) {
+        return true;
+      }
+    }
+    return false;
+  },
   fetch: async (url, options, type = 'json') => {
     const result = await fetch(url, options);
     return await result[type]();
