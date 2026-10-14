@@ -1,5 +1,3 @@
-// WARNING
-// DO NOT CHANGE THIS FILE UNLESS YOU ARE SURE OF WHAT YOU ARE DOING
 {
   "created": {
     "label": "created",
@@ -11,7 +9,8 @@
       "cancelled": {
         "access": ["client", "waiter", "manager"]
       }
-    }
+    },
+    "first": true
   },
   "payment_pending": {
     "label": "payment_pending",

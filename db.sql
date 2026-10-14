@@ -23,15 +23,6 @@ CREATE TABLE "currencies" (
 	"active"	TEXT NOT NULL DEFAULT 'no',
 	PRIMARY KEY("code")
 );
-CREATE TABLE "order_items" (
-	"order_id"	INTEGER NOT NULL,
-	"product_id"	INTEGER NOT NULL,
-	"parent_id"	INTEGER,
-	"quantity"	REAL NOT NULL,
-	"unit_price"	REAL NOT NULL,
-	"action"	TEXT NOT NULL DEFAULT 'add',
-	PRIMARY KEY("order_id","product_id")
-);
 CREATE TABLE "product_flags" (
 	"id"	INTEGER NOT NULL,
 	"product_id"	INTEGER NOT NULL,
@@ -60,31 +51,12 @@ CREATE TABLE "tags" (
 	"value"	TEXT NOT NULL,
 	PRIMARY KEY("id" AUTOINCREMENT)
 );
-CREATE TABLE "cart_items" (
-	"uuid"	TEXT NOT NULL,
-	"product_id"	INTEGER NOT NULL,
-	"parent_id"	INTEGER,
-	"quantity"	REAL NOT NULL DEFAULT 0,
-	"action"	TEXT NOT NULL DEFAULT 'add',
-	PRIMARY KEY("uuid","product_id")
-);
 CREATE TABLE "carts" (
 	"uuid"	TEXT NOT NULL,
 	"key"	TEXT NOT NULL,
 	"currency"	TEXT NOT NULL,
 	"updated_at"	TEXT NOT NULL,
 	PRIMARY KEY("uuid")
-);
-CREATE TABLE "orders" (
-	"id"	INTEGER NOT NULL,
-	"flow"	TEXT NOT NULL,
-	"user_id"	INTEGER,
-	"uuid"	TEXT UNIQUE,
-	"currency"	TEXT NOT NULL,
-	"status"	TEXT NOT NULL,
-	"notes"	TEXT,
-	"created_at"	TEXT NOT NULL,
-	PRIMARY KEY("id" AUTOINCREMENT)
 );
 CREATE INDEX "tokens-expires_at" ON "tokens" (
 	"expires_at"	DESC
@@ -100,21 +72,6 @@ CREATE INDEX "reset_codes-user_id" ON "reset_codes" (
 );
 CREATE INDEX "currencies-active" ON "currencies" (
 	"active"	ASC
-);
-CREATE INDEX "order_items-action" ON "order_items" (
-	"action"	ASC
-);
-CREATE INDEX "order_items-order_id" ON "order_items" (
-	"order_id"	ASC
-);
-CREATE INDEX "order_items-parent_id" ON "order_items" (
-	"parent_id"	ASC
-);
-CREATE INDEX "order_items-product_id" ON "order_items" (
-	"product_id"	ASC
-);
-CREATE INDEX "order_items-quantity" ON "order_items" (
-	"quantity"	ASC
 );
 CREATE INDEX "product_flags-key_value" ON "product_flags" (
 	"key"	ASC,
@@ -143,21 +100,6 @@ CREATE INDEX "tags-table_id_language" ON "tags" (
 );
 CREATE INDEX "carts-updated_at" ON "carts" (
 	"updated_at"	DESC
-);
-CREATE INDEX "orders-created_at" ON "orders" (
-	"created_at"	DESC
-);
-CREATE INDEX "orders-currency" ON "orders" (
-	"currency"	ASC
-);
-CREATE INDEX "orders-status" ON "orders" (
-	"status"	ASC
-);
-CREATE INDEX "orders-user_id" ON "orders" (
-	"user_id"	ASC
-);
-CREATE INDEX "orders-flow" ON "orders" (
-	"flow"	ASC
 );
 CREATE TABLE "users" (
 	"id"	INTEGER NOT NULL,
@@ -195,4 +137,76 @@ CREATE INDEX "order_history-status_created_at" ON "order_history" (
 );
 CREATE INDEX "order_history-author_id" ON "order_history" (
 	"author_id"	ASC
+);
+CREATE TABLE "cart_items" (
+	"uuid"	TEXT NOT NULL,
+	"product_id"	INTEGER NOT NULL,
+	"parent_id"	INTEGER,
+	"quantity"	INTEGER NOT NULL DEFAULT 0,
+	"action"	TEXT NOT NULL DEFAULT 'add',
+	PRIMARY KEY("uuid","product_id")
+);
+CREATE INDEX "cart_items-parent_id" ON "cart_items" (
+	"parent_id"	ASC
+);
+CREATE INDEX "cart_items-action" ON "cart_items" (
+	"action"	ASC
+);
+CREATE INDEX "cart_items-quantity" ON "cart_items" (
+	"quantity"	ASC
+);
+CREATE TABLE "order_items" (
+	"order_id"	INTEGER NOT NULL,
+	"product_id"	INTEGER NOT NULL,
+	"parent_id"	INTEGER,
+	"quantity"	INTEGER NOT NULL,
+	"unit_price"	REAL NOT NULL,
+	"subtotal"	REAL NOT NULL,
+	"action"	TEXT NOT NULL DEFAULT 'add',
+	PRIMARY KEY("order_id","product_id")
+);
+CREATE INDEX "order_items-action" ON "order_items" (
+	"action"	ASC
+);
+CREATE INDEX "order_items-parent_id" ON "order_items" (
+	"parent_id"	ASC
+);
+CREATE INDEX "order_items-quantity" ON "order_items" (
+	"quantity"	ASC
+);
+CREATE INDEX "order_items-unit_price" ON "order_items" (
+	"unit_price"	ASC
+);
+CREATE INDEX "order_items-subtotal" ON "order_items" (
+	"subtotal"	ASC
+);
+CREATE TABLE "orders" (
+	"id"	INTEGER NOT NULL,
+	"flow"	TEXT NOT NULL,
+	"user_id"	INTEGER,
+	"uuid"	TEXT UNIQUE,
+	"currency"	TEXT NOT NULL,
+	"total"	REAL NOT NULL,
+	"status"	TEXT NOT NULL,
+	"notes"	TEXT,
+	"created_at"	TEXT NOT NULL,
+	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE INDEX "orders-created_at" ON "orders" (
+	"created_at"	DESC
+);
+CREATE INDEX "orders-currency" ON "orders" (
+	"currency"	ASC
+);
+CREATE INDEX "orders-flow" ON "orders" (
+	"flow"	ASC
+);
+CREATE INDEX "orders-status" ON "orders" (
+	"status"	ASC
+);
+CREATE INDEX "orders-user_id" ON "orders" (
+	"user_id"	ASC
+);
+CREATE INDEX "orders-total" ON "orders" (
+	"total"	ASC
 );

@@ -52,9 +52,9 @@ module.exports = function (options) {
     },
     get: function (data, limit = 10, offset = 0) {
       let fields = utils.cleanKeys(data);
-      const total = this.db.prepare(`select count(id) as total from users where ${fields.join(' and ')}`).get();
+      const total = this.db.prepare(`select count(id) as total from users where ${fields.join(' and ')}`).get(data);
       const list = this.db.prepare(`select id, email, type, created_at from users where ${fields.join(' and ')} limit :limit offset :offset`).all({ ...data, limit, offset });
-      return { list, ...total }
+      return { list, ...total };
     },
     set: function (data, toSet) {
       let fields = utils.cleanKeys(data);
@@ -91,7 +91,11 @@ module.exports = function (options) {
   this.product_flags = {
     get: function (data) {
       let fields = utils.cleanKeys(data);
-      return this.db.prepare(`select * from product_flags where ${fields.join(' and ')}`).all(data);
+      const flags = this.db.prepare(`select * from product_flags where ${fields.join(' and ')}`).all(data);
+      for (let item of flags) {
+        item.value = utils.parseNumber(item.value);
+      }
+      return flags;
     },
     update: function (data) {
       return generic.update.apply(this, ['product_flags', ['id'], ['product_id', 'key', 'value'], data]);
@@ -154,27 +158,68 @@ module.exports = function (options) {
       return generic.update.apply(this, ['prices', ['product_id', 'currency'], ['value'], data]);
     }
   }
+  this.order_history = {
+    get: function (data) {
+      let fields = utils.cleanKeys(data);
+      return this.db.prepare(`select * from order_history where ${fields.join(' and ')}`).all(data);
+    },
+    update: function (data) {
+      return generic.update.apply(this, ['prices', ['product_id', 'currency'], ['value'], data]);
+    }
+  }
   this.orders = {
     get: function (data, limit = 10, offset = 0) {
       let fields = utils.cleanKeys(data);
-      const total = this.db.prepare(`select count(*) as total from orders where ${fields.join(' and ')}`).get();
-      const list = this.db.prepare(`select * from orders where ${fields.join(' and ')} limit :limit offset :offset`).all({ ...data, limit, offset });
-      return { list, ...total }
+      const total = this.db.prepare(`select count(*) as total from orders where ${fields.join(' and ')}`).get(data);
+      let list = this.db.prepare(`select * from orders where ${fields.join(' and ')} limit :limit offset :offset`).all({ ...data, limit, offset });
+      list = generic.getOrderItems.apply(this, [list]);
+      return { list, ...total };
     },
-    update: function (data) {
+    find: function (data) {
+      const options = {
+        canOrderBy: ['orders.id', 'orders.total', 'orders.created_at', 'prices.value'],
+        tables: ['orders', 'order_items'],
+        select: 'orders.id, orders.flow, orders.user_id, orders.uuid, orders.currency, orders.total, orders.status, orders.notes, orders.created_at',
+        foreignKeys: ['order_items.order_id'],
+        groupBy: 'orders.id'
+      }
+      const result = generic.find.apply(this, [options, data]);
+      result.list = generic.getOrderItems.apply(this, [result.list]);
+      return result;
+    },
+    updateStatus: function (data) {
       data.created_at = new Date().toISOString();
       // to do
     },
     create: function (data) {
       try {
         this.db.exec('begin');
-        const basket = self.cart.get.apply(this, [data]);
-        checkProducts.apply(this, [basket]);
-        // to do
+        if (!utils.flowExists(data.flow)) {
+          throw 'wrong_flow';
+        }
+        let basket = self.cart.get.apply(this, [data]);
+        basket = checkProducts.apply(this, [basket]);
+        basket.cart.flow = data.flow;
+        basket.cart.user_id = data.user_id || null;
+        basket.cart.status = utils.getFirstFlowStatus(data.flow);
+        basket.cart.notes = data.notes;
+        basket.cart.created_at = new Date().toISOString();
+        delete basket.cart.key;
+        delete basket.cart.updated_at;
+        this.db.prepare('insert into orders (flow, user_id, uuid, currency, total, status, notes, created_at) values (:flow, :user_id, :uuid, :currency, :total, :status, :notes, :created_at)').run(basket.cart);
+        const order = this.db.prepare('select * from orders where uuid = :uuid').get({ uuid: basket.cart.uuid });
+        const insertOrderItem = this.db.prepare('insert into order_items (order_id, product_id, parent_id, quantity, unit_price, subtotal, action) values (:order_id, :product_id, :parent_id, :quantity, :unit_price, :subtotal, :action)');
+        for (let i = 0; i < basket.list.length; i++) {
+          basket.list[i].order_id = order.id;
+          delete basket.list[i].uuid;
+          insertOrderItem.run(basket.list[i]);
+        }
+        // to do - update product stock
         this.db.exec('commit');
+        return self.orders.get({ uuid: basket.cart.uuid }).list[0];
       }
       catch (error) {
-        rollback(this.db);
+        generic.rollback(this.db);
         throw error;
       }
     }
@@ -232,7 +277,7 @@ module.exports = function (options) {
         return result;
       }
       catch (error) {
-        rollback(this.db);
+        generic.rollback(this.db);
         throw error;
       }
     },
@@ -262,10 +307,14 @@ module.exports = function (options) {
         item.product_flags[key] = values;
       }
     }
+    let total = 0;
     for (let item of basket.list) {
       const id = item.product_id;
       const pid = item.parent_id;
       let hasParent = false;
+      if (!Number.isInteger(item.quantity)) {
+        throw `quantity_not_integer@product_id=${id}`;
+      }
       if (!actions.includes(item.action)) {
         throw `wrong_action@product_id=${id}`;
       }
@@ -275,6 +324,7 @@ module.exports = function (options) {
       if (typeof map[id].prices[basket.cart.currency] == 'undefined') {
         throw `missing_price@product_id=${id},currency=${basket.cart.currency}`;
       }
+      item.unit_price = map[id].prices[basket.cart.currency];
       if (pid) {
         if (!map[pid]) {
           throw `missing_parent_entry@product_id=${id},parent_id=${pid}`;
@@ -287,9 +337,10 @@ module.exports = function (options) {
         hasParent = true;
       }
       if (item.action == 'add') {
-        if (map[id].stock > 0 && map[id].stock - item.quantity < 0) {
+        if (map[id].stock > 0 && item.quantity > map[id].stock) {
           throw `insufficient_stock@product_id=${id}`;
         }
+        item.subtotal = item.unit_price * 100 * item.quantity / 100;
       }
       if (item.action == 'remove') {
         if (!pid) {
@@ -302,13 +353,30 @@ module.exports = function (options) {
         !utils.arrayIncludesSome(map[pid].product_flags.type, map[id].product_flags.active_parent_type)) {
           throw `missing_active_parent_type_flag@product_id=${id},parent_id=${pid}`;
         }
+        if (!map[id].product_flags.active_quantity) {
+          throw `missing_active_quantity_flag@product_id=${id}`;
+        }
+        if (Array.isArray(map[id].product_flags.subtractable_price) && map[id].product_flags.subtractable_price.length > 1) {
+          throw `multiple_values_for_subtractable_price_flag@product_id=${id}`;
+        }
+        if (Array.isArray(map[id].product_flags.active_quantity) && map[id].product_flags.active_quantity.length > 1) {
+          throw `multiple_values_for_active_quantity_flag@product_id=${id}`;
+        }
+        item.subtotal = 0;
+        if (Array.isArray(map[id].product_flags.subtractable_price) && map[id].product_flags.subtractable_price[0] == 'yes') {
+          if (!map[id].product_flags.active_quantity) {
+            throw `missing_active_quantity_flag@product_id=${id}`;
+          }
+          if (Array.isArray(map[id].product_flags.active_quantity) && item.quantity > map[id].product_flags.active_quantity[0]) {
+            throw `insufficient_active_quantity@product_id=${id}`;
+          }
+          item.subtotal = item.unit_price * 100 * item.quantity / 100 * -1;
+        }
       }
+      total += item.subtotal * 100;
     }
-  }
-  const rollback = (db) => {
-    if (db && db.isOpen && db.isTransaction) {
-      db.exec('rollback');
-    }
+    basket.cart.total = total / 100;
+    return basket;
   }
   // run each method within its own db instance
   const wrap = (table, method) => {

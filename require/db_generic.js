@@ -256,5 +256,24 @@ module.exports = {
       entries[map[item.product_id]].prices[item.currency] = utils.parseNumber(item.value);
     }
     return entries;
+  },
+  getOrderItems: function (entries) {
+    const ids = [];
+    const map = {};
+    for (let i = 0; i < entries.length; i++) {
+      entries[i].order_items = [];
+      ids.push(entries[i].id);
+      map[entries[i].id] = i;
+    }
+    const order_items = this.db.prepare(`select * from order_items where order_id in (${ids.join(', ')}) order by order_id asc`).all();
+    for (let item of order_items) {
+      entries[map[item.order_id]].order_items.push(item);
+    }
+    return entries;
+  },
+  rollback: (db) => {
+    if (db && db.isOpen && db.isTransaction) {
+      db.exec('rollback');
+    }
   }
 }

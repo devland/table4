@@ -46,7 +46,7 @@ module.exports = {
         if (request.table4.token && request.table4.token.expires_at < now) {
           throw 'token_expired';
         }
-        let allowed = access['everyone'];
+        let allowed = access[config.users.everyone];
         if (request.table4.user) {
           allowed = allowed.concat(access[request.table4.user.type]);
         }
@@ -66,7 +66,7 @@ module.exports = {
           label = error;
           error = undefined;
         }
-        log(`[${response.statusCode}] [${label}] ${request.url}/${body.method} (${benchmarkTime} ms, ${request.socket.remoteAddress})`, error);
+        log(`[${label}] [${response.statusCode}] ${request.url}/${body.method} (${benchmarkTime} ms, ${request.socket.remoteAddress})`, error);
       }
     });
   },
@@ -77,7 +77,7 @@ module.exports = {
       const result = db.users.add({
         email: request.table4.body.input.email,
         password: hash,
-        type: config.defaultUserType
+        type: config.users.client
       });
       handleRequest(response, null, result);
     }
@@ -152,6 +152,7 @@ module.exports = {
         throw new Error(result);
       }
     }
+    // show done even if there is no user to avoid user sniffing
     handleRequest(response, null, 'done');
   },
   'resetPassword': async (request, response) => {
@@ -246,11 +247,13 @@ module.exports = {
     });
     handleRequest(response, null, result);
   },
-  'getUser': (request, response) => {
+  'getOwnUser': (request, response) => {
     const input = request.table4.body.input;
+    if (request.table4.user.id != input.user_id) {
+      throw 'access_denied';
+    }
     const result = db.users.getFirst({
-      id: input.id,
-      email: input.email
+      id: input.id
     });
     delete result.password;
     handleRequest(response, null, result);
@@ -340,22 +343,37 @@ module.exports = {
     const result = db.cart.update(input);
     handleRequest(response, null, result);
   },
-  'getOrders': (request, response) => {
+  'getOrder': (request, response) => {
     const input = request.table4.body.input;
     const result = db.orders.get({
-      id: input.id,
-      user_id: input.user_id,
       uuid: input.uuid
+    }).list?.[0];
+    handleRequest(response, null, result);
+  },
+  'getOwnOrders': (request, response) => {
+    const input = request.table4.body.input;
+    if (request.table4.user.id != input.user_id) {
+      throw 'access_denied';
+    }
+    const result = db.orders.get({
+      user_id: input.user_id
     }, input.limit, input.offset);
     handleRequest(response, null, result);
   },
-  'updateOrders': (request, response) => {
+  'findOrders': (request, response) => {
     const input = request.table4.body.input;
+    const result = db.orders.find(input);
+    handleRequest(response, null, result);
+  },
+  'updateOrderStatus': (request, response) => {
+    const input = request.table4.body.input;
+    // to do order flow handling
     const result = db.orders.update(input);
     handleRequest(response, null, result);
   },
   'createOrder': (request, response) => {
     const input = request.table4.body.input;
+    input.user_id = request.table4.user?.id;
     const result = db.orders.create(input);
     handleRequest(response, null, result);
   }

@@ -1,3 +1,6 @@
+const fs = require('fs');
+const path = require('path');
+const flowsPath = './require/flows';
 module.exports = {
   parseNumber: (value) => {
     return isNaN(value) ? value : parseFloat(value);
@@ -29,6 +32,21 @@ module.exports = {
       }
     }
     return false;
+  },
+  getFlows: () => {
+    const folderPath = flowsPath;
+    return fs.readdirSync(folderPath)
+    .map(fileName => path.join(folderPath, fileName))
+    .filter(filePath => fs.lstatSync(filePath).isDirectory())
+    .map(folderPath => folderPath.split('/').pop());
+  },
+  flowExists: (flowName) => {
+    const folderPath = path.join(flowsPath, flowName);
+    return fs.existsSync(folderPath) && fs.lstatSync(folderPath).isDirectory();
+  },
+  getFirstFlowStatus: (flowName) => {
+    const flow = JSON.parse(fs.readFileSync(path.join(flowsPath, flowName, 'flow.json')));
+    return Object.keys(flow)[Object.values(flow).findIndex(item => item.first)];
   },
   fetch: async (url, options, type = 'json') => {
     const result = await fetch(url, options);
