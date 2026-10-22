@@ -2,6 +2,7 @@ module.exports = function (options) {
   const { DatabaseSync } = require('node:sqlite');
   const utils = require('./utils.js');
   const generic = require('./db_generic.js');
+  const config = options.config;
   const self = this;
   this.tokens = {
     getFirst: function (data) {
@@ -98,7 +99,16 @@ module.exports = function (options) {
       return flags;
     },
     update: function (data) {
-      return generic.update.apply(this, ['product_flags', ['id'], ['product_id', 'key', 'value'], data]);
+      try {
+        this.db.exec('begin');
+        generic.update.apply(this, ['product_flags', ['id'], ['product_id', 'key', 'value'], data, { skipBegin: true }]);
+        checkProducts(data);
+        this.db.exec('commit');
+      }
+      catch (error) {
+        generic.rollback(this.db);
+        throw error;
+      }
     }
   }
   this.products = {
@@ -198,10 +208,11 @@ module.exports = function (options) {
           throw 'wrong_flow';
         }
         let basket = self.cart.get.apply(this, [data]);
-        basket = checkProducts.apply(this, [basket]);
+        basket = checkCartItems.apply(this, [basket]);
+        const flow = utils.getFlow(data.flow);
         basket.cart.flow = data.flow;
         basket.cart.user_id = data.user_id || null;
-        basket.cart.status = utils.getFirstFlowStatus(data.flow);
+        basket.cart.status = utils.getFirstFlowStatus(flow, data.flow);
         basket.cart.notes = data.notes;
         basket.cart.created_at = new Date().toISOString();
         delete basket.cart.key;
@@ -214,7 +225,8 @@ module.exports = function (options) {
           delete basket.list[i].uuid;
           insertOrderItem.run(basket.list[i]);
         }
-        // to do - update product stock
+        // delete cart entries
+        generic.updateStock.apply(this, [flow, basket]);
         this.db.exec('commit');
         return self.orders.get({ uuid: basket.cart.uuid }).list[0];
       }
@@ -281,6 +293,10 @@ module.exports = function (options) {
         throw error;
       }
     },
+    checkCartItems: function (data) {
+      let basket = self.cart.get.apply(this, [data]);
+      basket = checkCartItems.apply(this, [basket]);
+    },
     clean: function (maxDuration) {
       let maxTime = new Date();
       maxTime.setTime(maxTime.getTime() - maxDuration);
@@ -289,7 +305,7 @@ module.exports = function (options) {
       return this.db.prepare('delete from carts where updated_at < :maxTime').run({ maxTime });
     }
   }
-  const checkProducts = function (basket) {
+  const checkCartItems = function (basket) {
     const actions = ['add', 'remove'];
     const ids = [];
     for (let item of basket.list) {
@@ -312,9 +328,11 @@ module.exports = function (options) {
       const id = item.product_id;
       const pid = item.parent_id;
       let hasParent = false;
-      if (!Number.isInteger(item.quantity)) {
-        throw `quantity_not_integer@product_id=${id}`;
-      }
+      let parentTypes = {};
+      let activeParentTypes = {};
+      let activeParentTypeOnParent;
+      let activeQuantityFlag;
+      let active_quantity = 0;
       if (!actions.includes(item.action)) {
         throw `wrong_action@product_id=${id}`;
       }
@@ -325,22 +343,44 @@ module.exports = function (options) {
         throw `missing_price@product_id=${id},currency=${basket.cart.currency}`;
       }
       item.unit_price = map[id].prices[basket.cart.currency];
+      item.subtotal = 0;
       if (pid) {
         if (!map[pid]) {
           throw `missing_parent_entry@product_id=${id},parent_id=${pid}`;
         }
-        if (!map[id].product_flags.parent_type ||
-        !map[pid].product_flags.type ||
-        !utils.arrayIncludesSome(map[pid].product_flags.type, map[id].product_flags.parent_type)) {
+        if (map[pid].product_flags.parent_type) {
+          throw `parent_has_parent_type_flag@product_id=${id},parent_id=${pid}`;
+        }
+        if (!map[pid].product_flags.type) {
+          throw `parent_missing_type_flag@product_id=${id},parent_id=${pid}`;
+        }
+        if (!map[id].product_flags.parent_type) {
           throw `missing_parent_type_flag@product_id=${id},parent_id=${pid}`;
         }
+        parentTypes = utils.arrayIncludesSome(map[pid].product_flags.type, map[id].product_flags.parent_type);
+        if (parentTypes.total == 0) {
+          throw `missing_parent_type_for_parent@product_id=${id},parent_id=${pid}`;
+        }
         hasParent = true;
+        if (map[id].product_flags.active_parent_type) {
+          activeParentTypes = utils.arrayIncludesSome(Object.keys(parentTypes.included), map[id].product_flags.active_parent_type);
+          if (activeParentTypes.total == 1) {
+            activeParentTypeOnParent = Object.keys(activeParentTypes.included)[0];
+            activeQuantityFlag = `active_quantity@active_parent_type=${activeParentTypeOnParent}`;
+            if (Array.isArray(map[id].product_flags[activeQuantityFlag]) && map[id].product_flags[activeQuantityFlag].length == 1) {
+              active_quantity = map[id].product_flags[activeQuantityFlag][0];
+            }
+          }
+        }
+      }
+      if (map[id].stock >= 0 && active_quantity > map[id].stock) {
+        throw `insufficient_stock_for_active_quantity@product_id=${id}`;
       }
       if (item.action == 'add') {
-        if (map[id].stock > 0 && item.quantity > map[id].stock) {
+        if (map[id].stock >= 0 && item.quantity + active_quantity > map[id].stock) {
           throw `insufficient_stock@product_id=${id}`;
         }
-        item.subtotal = item.unit_price * 100 * item.quantity / 100;
+        item.subtotal = utils.multiply(item.unit_price, item.quantity);
       }
       if (item.action == 'remove') {
         if (!pid) {
@@ -349,33 +389,34 @@ module.exports = function (options) {
         if (!hasParent) {
           throw `cannot_remove_product_without_parent@product_id=${id}`;
         }
-        if (!map[id].product_flags.active_parent_type ||
-        !utils.arrayIncludesSome(map[pid].product_flags.type, map[id].product_flags.active_parent_type)) {
+        if (!map[id].product_flags.active_parent_type) {
           throw `missing_active_parent_type_flag@product_id=${id},parent_id=${pid}`;
         }
-        if (!map[id].product_flags.active_quantity) {
-          throw `missing_active_quantity_flag@product_id=${id}`;
+        if (activeParentTypes.total == 0) {
+          throw `missing_active_parent_type_for_parent@product_id=${id},parent_id=${pid}`;
+        }
+        if (activeParentTypes.total > 1) {
+          throw `multiple_active_parent_types_for_parent@product_id=${id},parent_id=${pid}`;
+        }
+        if (!map[id].product_flags[activeQuantityFlag]) {
+          throw `missing_active_quantity_flag@product_id=${id},parent_id=${pid},active_parent_type=${activeParentTypeOnParent}`;
         }
         if (Array.isArray(map[id].product_flags.subtractable_price) && map[id].product_flags.subtractable_price.length > 1) {
           throw `multiple_values_for_subtractable_price_flag@product_id=${id}`;
         }
-        if (Array.isArray(map[id].product_flags.active_quantity) && map[id].product_flags.active_quantity.length > 1) {
+        if (Array.isArray(map[id].product_flags[activeQuantityFlag]) && map[id].product_flags[activeQuantityFlag].length > 1) {
           throw `multiple_values_for_active_quantity_flag@product_id=${id}`;
         }
-        item.subtotal = 0;
         if (Array.isArray(map[id].product_flags.subtractable_price) && map[id].product_flags.subtractable_price[0] == 'yes') {
-          if (!map[id].product_flags.active_quantity) {
-            throw `missing_active_quantity_flag@product_id=${id}`;
-          }
-          if (Array.isArray(map[id].product_flags.active_quantity) && item.quantity > map[id].product_flags.active_quantity[0]) {
+          if (item.quantity > active_quantity) {
             throw `insufficient_active_quantity@product_id=${id}`;
           }
-          item.subtotal = item.unit_price * 100 * item.quantity / 100 * -1;
+          item.subtotal = utils.multiply(item.unit_price, item.quantity) * -1;
         }
       }
-      total += item.subtotal * 100;
+      total = utils.sum(total, item.subtotal);
     }
-    basket.cart.total = total / 100;
+    basket.cart.total = total;
     return basket;
   }
   // run each method within its own db instance
@@ -385,7 +426,7 @@ module.exports = function (options) {
     this.methods[table][method] = this[table][method];
     this[table][method] = function () {
       if (!this.db) {
-        this.db = new DatabaseSync(options.dbPath);
+        this.db = new DatabaseSync(config.dbPath);
       }
       const result = self.methods[table][method].apply(this, arguments);
       if (this.db && this.db.isOpen && !this.db.isTransaction) {

@@ -2,8 +2,8 @@ const path = require('path');
 const https = require('https');
 const fs = require('fs');
 const mimes = require('./require/mimes.js');
-const api = require('./require/api.js');
 const config = require('./config.js');
+const api = require('./require/api.js');
 const options = {
   key: config.https.key ? fs.readFileSync(config.https.key) : null,
   cert: config.https.cert ? fs.readFileSync(config.https.cert) : null

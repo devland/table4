@@ -1,5 +1,10 @@
 const utils = require('./utils.js');
 module.exports = {
+  updateStock: function (flow, basket) {
+    if (flow[basket.cart.status].decrementStock) {
+      // to do
+    }
+  },
   find: function (options, data) {
     if (!options.canOrderBy.includes(data.orderBy)) {
       throw 'wrong_orderBy';
@@ -70,7 +75,7 @@ module.exports = {
       limit: data.limit,
       offset: data.offset
     });
-    return { list: products, total }
+    return { list: products, total };
   },
   /*
    * pkColumns - array of primary key columns
@@ -199,7 +204,7 @@ module.exports = {
     }
     catch (error) {
       if (!options.skipBegin) {
-        rollback(this.db);
+        module.exports.rollback(this.db);
       }
       throw error;
     }

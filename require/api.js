@@ -5,7 +5,7 @@ const passhash = require('./passhash.js');
 const access = require('./access.js');
 const { log, handleRequest } = require('../require/utils.js');
 const email = require('./email');
-const db = new (require('./db.js'))({ dbPath: config.dbPath });
+const db = new (require('./db.js'))({ config });
 this.languages = {}
 const loadLanguages = () => {
   const result = fs.readdirSync('static/languages');
@@ -63,7 +63,7 @@ module.exports = {
         const benchmarkTime = (performance.now() - benchmarkStart).toFixed(3);
         let label = 'error';
         if (typeof error == 'string') {
-          label = error;
+          label = error.split('@')[0];
           error = undefined;
         }
         log(`[${label}] [${response.statusCode}] ${request.url}/${body.method} (${benchmarkTime} ms, ${request.socket.remoteAddress})`, error);
@@ -341,6 +341,11 @@ module.exports = {
     const input = request.table4.body.input;
     db.cart.clean(config.tokenDuration);
     const result = db.cart.update(input);
+    handleRequest(response, null, result);
+  },
+  'checkCartItems': (request, response) => {
+    const input = request.table4.body.input;
+    const result = db.cart.checkCartItems(input);
     handleRequest(response, null, result);
   },
   'getOrder': (request, response) => {

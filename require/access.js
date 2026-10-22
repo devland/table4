@@ -8,6 +8,7 @@ module.exports = {
     'resetPassword',
     'getCart',
     'updateCart',
+    'checkCartItems',
     'createOrder',
     'getOrder'
   ],

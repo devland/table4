@@ -1,7 +1,7 @@
 {
   "created": {
     "label": "created",
-    "stages": ["created"],
+    "triggers": ["created"],
     "canMoveTo": {
       "payment_pending": {
         "access": ["client"]
@@ -10,11 +10,12 @@
         "access": ["client", "waiter", "manager"]
       }
     },
-    "first": true
+    "first": true,
+    "decrementStock": true
   },
   "payment_pending": {
     "label": "payment_pending",
-    "stages": ["payment_pending"],
+    "triggers": ["payment_pending"],
     "canMoveTo": {
       "paid": {
         "access": ["system"]
@@ -26,7 +27,7 @@
   },
   "payment_failed": {
     "label": "payment_failed",
-    "stages": ["payment_failed"],
+    "triggers": ["payment_failed"],
     "canMoveTo": {
       "payment_pending": {
         "access": ["client"]
@@ -38,7 +39,7 @@
   },
   "paid": {
     "label": "paid",
-    "stages": ["paid"],
+    "triggers": ["paid"],
     "canMoveTo": {
       "preparing": {
         "access": ["chef"]
@@ -113,7 +114,7 @@
   },
   "pending_refund": {
     "label": "pending_refund",
-    "stages": ["pending_refund"],
+    "triggers": ["pending_refund"],
     "canMoveTo": {
       "refund_failed": {
         "access": ["system"]
@@ -125,10 +126,10 @@
   },
   "refund_failed": {
     "label": "refund_failed",
-    "stages": ["refund_failed"]
+    "triggers": ["refund_failed"]
   },
   "refunded": {
     "label": "refunded",
-    "stages": ["refunded"]
+    "triggers": ["refunded"]
   }
 }
