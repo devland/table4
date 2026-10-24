@@ -204,15 +204,15 @@ module.exports = function (options) {
     create: function (data) {
       try {
         this.db.exec('begin');
-        if (!utils.flowExists(data.flow)) {
+        const flow = options.flows[data.flow];
+        if (!flow) {
           throw 'wrong_flow';
         }
         let basket = self.cart.get.apply(this, [data]);
         basket = checkCartItems.apply(this, [basket]);
-        const flow = utils.getFlow(data.flow);
         basket.cart.flow = data.flow;
         basket.cart.user_id = data.user_id || null;
-        basket.cart.status = utils.getFirstFlowStatus(flow, data.flow);
+        basket.cart.status = flow.start;
         basket.cart.notes = data.notes;
         basket.cart.created_at = new Date().toISOString();
         delete basket.cart.key;
@@ -225,7 +225,7 @@ module.exports = function (options) {
           delete basket.list[i].uuid;
           insertOrderItem.run(basket.list[i]);
         }
-        // delete cart entries
+        self.cart.remove.apply(this, [{ uuid: data.uuid, key: data.key }]);
         generic.updateStock.apply(this, [flow, basket]);
         this.db.exec('commit');
         return self.orders.get({ uuid: basket.cart.uuid }).list[0];
@@ -296,6 +296,16 @@ module.exports = function (options) {
     checkCartItems: function (data) {
       let basket = self.cart.get.apply(this, [data]);
       basket = checkCartItems.apply(this, [basket]);
+    },
+    remove: function (data) {
+      const uuid = data.uuid;
+      const cart = this.db.prepare('select * from carts where uuid = :uuid').get({ uuid });
+      if (cart && cart.key != data.key) {
+        console.log(cart, data);
+        throw 'wrong_uuid_key';
+      }
+      this.db.prepare('delete from cart_items where uuid = :uuid; delete from carts where uuid = :uuid').run({ uuid });
+      return this.db.prepare('delete from carts where uuid = :uuid').run({ uuid });
     },
     clean: function (maxDuration) {
       let maxTime = new Date();

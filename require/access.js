@@ -9,6 +9,7 @@ module.exports = {
     'getCart',
     'updateCart',
     'checkCartItems',
+    'removeCart',
     'createOrder',
     'getOrder'
   ],

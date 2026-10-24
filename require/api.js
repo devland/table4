@@ -3,17 +3,11 @@ const fs = require('fs');
 const config = require('../config.js');
 const passhash = require('./passhash.js');
 const access = require('./access.js');
-const { log, handleRequest } = require('../require/utils.js');
+const utils = require('../require/utils.js');
 const email = require('./email');
-const db = new (require('./db.js'))({ config });
-this.languages = {}
-const loadLanguages = () => {
-  const result = fs.readdirSync('static/languages');
-  for (let item of result) {
-    const key = item.split('.')[0];
-    this.languages[key] = require(`../static/languages/${item}`);
-  }
-}
+this.languages = utils.getLanguages();
+this.flows = utils.getFlows();
+const db = new (require('./db.js'))({ config, flows: this.flows });
 module.exports = {
   'request': (request, response) => {
     const benchmarkStart = performance.now();
@@ -56,17 +50,17 @@ module.exports = {
         }
         await module.exports[body.method](request, response);
         const benchmarkTime = (performance.now() - benchmarkStart).toFixed(3);
-        log(`[${response.statusCode}] ${request.url}/${body.method} (${benchmarkTime} ms, ${request.socket.remoteAddress})`);
+        utils.log(`[${response.statusCode}] ${request.url}/${body.method} (${benchmarkTime} ms, ${request.socket.remoteAddress})`);
       }
       catch (error) {
-        handleRequest(response, error);
+        utils.handleRequest(response, error);
         const benchmarkTime = (performance.now() - benchmarkStart).toFixed(3);
         let label = 'error';
         if (typeof error == 'string') {
           label = error.split('@')[0];
           error = undefined;
         }
-        log(`[${label}] [${response.statusCode}] ${request.url}/${body.method} (${benchmarkTime} ms, ${request.socket.remoteAddress})`, error);
+        utils.log(`[${label}] [${response.statusCode}] ${request.url}/${body.method} (${benchmarkTime} ms, ${request.socket.remoteAddress})`, error);
       }
     });
   },
@@ -79,7 +73,7 @@ module.exports = {
         password: hash,
         type: config.users.client
       });
-      handleRequest(response, null, result);
+      utils.handleRequest(response, null, result);
     }
     else {
       throw 'email_taken';
@@ -103,7 +97,7 @@ module.exports = {
     if (!result.lastInsertRowid) {
       throw new Error(result);
     }
-    handleRequest(response, null, { token });
+    utils.handleRequest(response, null, { token });
   },
   'changePassword': async (request, response) => {
     const input = request.table4.body.input;
@@ -126,7 +120,7 @@ module.exports = {
       subject: `${config.host} - ${lang.passwordChanged}`,
       text: `${lang.passwordChanged} @ ${now.toString()}`
     });
-    handleRequest(response, null, result);
+    utils.handleRequest(response, null, result);
   },
   'sendPasswordResetCode': async (request, response) => {
     const input = request.table4.body.input;
@@ -153,7 +147,7 @@ module.exports = {
       }
     }
     // show done even if there is no user to avoid user sniffing
-    handleRequest(response, null, 'done');
+    utils.handleRequest(response, null, 'done');
   },
   'resetPassword': async (request, response) => {
     const input = request.table4.body.input;
@@ -186,7 +180,7 @@ module.exports = {
       subject: `${config.host} - ${lang.passwordChanged}`,
       text: `${lang.passwordChanged} @ ${now.toString()}`
     });
-    handleRequest(response, null, result);
+    utils.handleRequest(response, null, result);
   },
   'sendEmailChangeCode': async (request, response) => {
     const input = request.table4.body.input;
@@ -215,7 +209,7 @@ module.exports = {
     if (!result.id) {
       throw new Error(result);
     }
-    handleRequest(response, null, 'done');
+    utils.handleRequest(response, null, 'done');
   },
   'changeEmail': async (request, response) => {
     const input = request.table4.body.input;
@@ -245,7 +239,7 @@ module.exports = {
       subject: `${config.host} - ${lang.emailChanged}`,
       text: `${lang.emailChanged} @ ${now.toString()}`
     });
-    handleRequest(response, null, result);
+    utils.handleRequest(response, null, result);
   },
   'getOwnUser': (request, response) => {
     const input = request.table4.body.input;
@@ -256,7 +250,7 @@ module.exports = {
       id: input.id
     });
     delete result.password;
-    handleRequest(response, null, result);
+    utils.handleRequest(response, null, result);
   },
   'getUsers': (request, response) => {
     const input = request.table4.body.input;
@@ -265,95 +259,99 @@ module.exports = {
       email: input.email,
       type: input.type
     }, input.limit, input.offset);
-    handleRequest(response, null, result);
+    utils.handleRequest(response, null, result);
   },
   'getTagKeys': (request, response) => {
     const input = request.table4.body.input;
     const result = db.tagKeys.get(input);
-    handleRequest(response, null, result);
+    utils.handleRequest(response, null, result);
   },
   'updateTagKeys': (request, response) => {
     const input = request.table4.body.input;
     const result = db.tagKeys.update(input);
-    handleRequest(response, null, result);
+    utils.handleRequest(response, null, result);
   },
   'getProductFlags': (request, response) => {
     const input = request.table4.body.input;
     const result = db.product_flags.get(input);
-    handleRequest(response, null, result);
+    utils.handleRequest(response, null, result);
   },
   'updateProductFlags': (request, response) => {
     const input = request.table4.body.input;
     const result = db.product_flags.update(input);
-    handleRequest(response, null, result);
+    utils.handleRequest(response, null, result);
   },
   'getTags': (request, response) => {
     const input = request.table4.body.input;
     const result = db.tags.get(input);
-    handleRequest(response, null, result);
+    utils.handleRequest(response, null, result);
   },
   'updateTags': (request, response) => {
     const input = request.table4.body.input;
     const result = db.tags.update(input);
-    handleRequest(response, null, result);
+    utils.handleRequest(response, null, result);
   },
   'getCurrencies': (request, response) => {
     const result = db.currencies.get();
-    handleRequest(response, null, result);
+    utils.handleRequest(response, null, result);
   },
   'updateCurrencies': (request, response) => {
     const input = request.table4.body.input;
     const result = db.currencies.update(input);
-    handleRequest(response, null, result);
+    utils.handleRequest(response, null, result);
   },
   'getPrices': (request, response) => {
     const input = request.table4.body.input;
     const result = db.prices.get(input);
-    handleRequest(response, null, result);
+    utils.handleRequest(response, null, result);
   },
   'updatePrices': (request, response) => {
     const input = request.table4.body.input;
     const result = db.prices.update(input);
-    handleRequest(response, null, result);
+    utils.handleRequest(response, null, result);
   },
   'getProductsByIds': (request, response) => {
     const input = request.table4.body.input;
     const result = db.products.getByIds(input);
-    handleRequest(response, null, result);
+    utils.handleRequest(response, null, result);
   },
   'findProducts': (request, response) => {
     const input = request.table4.body.input;
     const result = db.products.find(input);
-    handleRequest(response, null, result);
+    utils.handleRequest(response, null, result);
   },
   'updateProducts': (request, response) => {
     const input = request.table4.body.input;
     const result = db.products.update(input);
-    handleRequest(response, null, result);
+    utils.handleRequest(response, null, result);
   },
   'getCart': (request, response) => {
     const input = request.table4.body.input;
-    db.cart.clean(config.tokenDuration);
     const result = db.cart.get(input);
-    handleRequest(response, null, result);
+    utils.handleRequest(response, null, result);
   },
   'updateCart': (request, response) => {
     const input = request.table4.body.input;
     db.cart.clean(config.tokenDuration);
     const result = db.cart.update(input);
-    handleRequest(response, null, result);
+    utils.handleRequest(response, null, result);
+  },
+  'removeCart': (request, response) => {
+    const input = request.table4.body.input;
+    const result = db.cart.remove(input);
+    utils.handleRequest(response, null, result);
   },
   'checkCartItems': (request, response) => {
     const input = request.table4.body.input;
     const result = db.cart.checkCartItems(input);
-    handleRequest(response, null, result);
+    utils.handleRequest(response, null, result);
   },
   'getOrder': (request, response) => {
     const input = request.table4.body.input;
     const result = db.orders.get({
       uuid: input.uuid
     }).list?.[0];
-    handleRequest(response, null, result);
+    utils.handleRequest(response, null, result);
   },
   'getOwnOrders': (request, response) => {
     const input = request.table4.body.input;
@@ -363,24 +361,23 @@ module.exports = {
     const result = db.orders.get({
       user_id: input.user_id
     }, input.limit, input.offset);
-    handleRequest(response, null, result);
+    utils.handleRequest(response, null, result);
   },
   'findOrders': (request, response) => {
     const input = request.table4.body.input;
     const result = db.orders.find(input);
-    handleRequest(response, null, result);
+    utils.handleRequest(response, null, result);
   },
   'updateOrderStatus': (request, response) => {
     const input = request.table4.body.input;
     // to do order flow handling
     const result = db.orders.update(input);
-    handleRequest(response, null, result);
+    utils.handleRequest(response, null, result);
   },
   'createOrder': (request, response) => {
     const input = request.table4.body.input;
     input.user_id = request.table4.user?.id;
     const result = db.orders.create(input);
-    handleRequest(response, null, result);
+    utils.handleRequest(response, null, result);
   }
 }
-loadLanguages();

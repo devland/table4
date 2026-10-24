@@ -1,6 +1,5 @@
 const fs = require('fs');
 const path = require('path');
-const flowsPath = './require/flows';
 const config = require('../config.js');
 const ut = {
   parseNumber: (value) => {
@@ -66,22 +65,31 @@ const ut = {
     }
     return { included, total };
   },
-  getFlows: () => { // list flow folders
-    const folderPath = flowsPath;
-    return fs.readdirSync(folderPath)
-    .map(fileName => path.join(folderPath, fileName))
+  getLanguages: () => {
+    const languages = {};
+    const list = fs.readdirSync('static/languages');
+    for (let item of list) {
+      const key = item.split('.')[0];
+      languages[key] = require(`../static/languages/${item}`);
+    }
+    return languages;
+  },
+  getFlows: () => {
+    const flowsPath = './require/flows';
+    const flows = {};
+    const list = fs.readdirSync(flowsPath)
+    .map(fileName => path.join(flowsPath, fileName))
     .filter(filePath => fs.lstatSync(filePath).isDirectory())
     .map(folderPath => folderPath.split('/').pop());
-  },
-  flowExists: (flowName) => {
-    const folderPath = path.join(flowsPath, flowName);
-    return fs.existsSync(folderPath) && fs.lstatSync(folderPath).isDirectory();
-  },
-  getFlow: (flowName) => {
-    return JSON.parse(fs.readFileSync(path.join(flowsPath, flowName, 'flow.json')));
-  },
-  getFirstFlowStatus: (flow, flowName) => {
-    return Object.keys(flow)[Object.values(flow).findIndex(item => item.first)];
+    for (let item of list) {
+      const stages = require(`./flows/${item}/flow.js`);
+      flows[item] = {
+        start: Object.keys(stages)[Object.values(stages).findIndex(item => item.start)],
+        stages,
+        triggers: require(`./flows/${item}/triggers.js`)
+      }
+    }
+    return flows;
   },
   fetch: async (url, options, type = 'json') => {
     const result = await fetch(url, options);

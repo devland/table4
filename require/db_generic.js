@@ -1,7 +1,7 @@
 const utils = require('./utils.js');
 module.exports = {
   updateStock: function (flow, basket) {
-    if (flow[basket.cart.status].decrementStock) {
+    if (flow.stages[basket.cart.status].decrementStock) {
       // to do
     }
   },
