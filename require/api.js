@@ -312,12 +312,20 @@ module.exports = {
   },
   'getProductsByIds': (request, response) => {
     const input = request.table4.body.input;
-    const result = db.products.getByIds(input);
+    const options = {
+      getComponents: input.getComponents
+    }
+    delete input.getComponents;
+    const result = db.products.getByIds(input, options);
     utils.handleRequest(response, null, result);
   },
   'findProducts': (request, response) => {
     const input = request.table4.body.input;
-    const result = db.products.find(input);
+    const options = {
+      getComponents: input.getComponents
+    }
+    delete input.getComponents;
+    const result = db.products.find(input, options);
     utils.handleRequest(response, null, result);
   },
   'updateProducts': (request, response) => {
@@ -327,6 +335,7 @@ module.exports = {
   },
   'getCart': (request, response) => {
     const input = request.table4.body.input;
+    db.cart.clean(config.tokenDuration);
     const result = db.cart.get(input);
     utils.handleRequest(response, null, result);
   },

@@ -112,7 +112,7 @@ module.exports = function (options) {
     }
   }
   this.products = {
-    getByIds: function (data) {
+    getByIds: function (data, options = {}) {
       if (!data.ids || !data.ids.length) {
         return { list: [], total: 0};
       }
@@ -131,21 +131,46 @@ module.exports = function (options) {
       products = generic.getProductFlags.apply(this, [products]);
       products = generic.getTags.apply(this, ['products', products]);
       products = generic.getPrices.apply(this, [products]);
+      if (options.getComponents) {
+        products = self.products.getComponents.apply(this, [products]);
+      }
       return { list: products, total }
     },
-    find: function (data) {
-      const options = {
+    find: function (data, options = {}) {
+      const params = {
         canOrderBy: ['products.id', 'product_flags.value', 'tags.value', 'prices.value'],
         tables: ['products', 'product_flags', 'tags', 'prices'],
         select: 'products.id, products.stock',
         foreignKeys: ['tags.for_id', 'product_flags.product_id', 'prices.product_id'],
         groupBy: 'products.id'
       }
-      const result = generic.find.apply(this, [options, data]);
+      const result = generic.find.apply(this, [params, data]);
       result.list = generic.getProductFlags.apply(this, [result.list]);
       result.list = generic.getTags.apply(this, ['products', result.list]);
       result.list = generic.getPrices.apply(this, [result.list]);
+      if (options.getComponents) {
+        products = self.products.getComponents.apply(this, [products]);
+      }
       return result;
+    },
+    getComponents: function (entries) {
+      let types = [];
+      for (let i = 0; i < entries.length; i++) {
+        if (!entries[i].product_flags.type) {
+          continue;
+        }
+        types = types.concat(entries[i].product_flags.type.map(item => `'${item.value}'`));
+        const products = this.db.prepare(`select products.id from products
+        left join tags on products.id = tags.for_id
+        left join product_flags on products.id = product_flags.product_id
+        left join prices on products.id = prices.product_id
+        where "product_flags"."key" = 'parent_type' and "product_flags"."value" in (${types.join(', ')})
+        group by products.id
+        order by products.id asc`).all();
+        const ids = products.map(item => item.id);
+        entries[i].components = self.products.getByIds.apply(this, [{ ids }]).list;
+      }
+      return entries;
     },
     update: function (data) {
       return generic.update.apply(this, ['products', ['id'], ['stock'], data]);
@@ -219,7 +244,7 @@ module.exports = function (options) {
         delete basket.cart.updated_at;
         this.db.prepare('insert into orders (flow, user_id, uuid, currency, total, status, notes, created_at) values (:flow, :user_id, :uuid, :currency, :total, :status, :notes, :created_at)').run(basket.cart);
         const order = this.db.prepare('select * from orders where uuid = :uuid').get({ uuid: basket.cart.uuid });
-        const insertOrderItem = this.db.prepare('insert into order_items (order_id, product_id, parent_id, quantity, unit_price, subtotal, action) values (:order_id, :product_id, :parent_id, :quantity, :unit_price, :subtotal, :action)');
+        const insertOrderItem = this.db.prepare('insert into order_items (order_id, product_id, parent_id, quantity, unit_price, subtotal) values (:order_id, :product_id, :parent_id, :quantity, :unit_price, :subtotal)');
         for (let i = 0; i < basket.list.length; i++) {
           basket.list[i].order_id = order.id;
           delete basket.list[i].uuid;
@@ -282,7 +307,7 @@ module.exports = function (options) {
           currency: data.currency,
           updated_at: new Date().toISOString()
         });
-        const result = generic.update.apply(this, ['cart_items', ['uuid', 'product_id'], ['parent_id', 'quantity', 'action'], data.list, {
+        const result = generic.update.apply(this, ['cart_items', ['uuid', 'product_id'], ['parent_id', 'quantity'], data.list, {
           skipBegin: true
         }]);
         this.db.exec('commit');
@@ -295,7 +320,7 @@ module.exports = function (options) {
     },
     checkCartItems: function (data) {
       let basket = self.cart.get.apply(this, [data]);
-      basket = checkCartItems.apply(this, [basket]);
+      return checkCartItems.apply(this, [basket]);
     },
     remove: function (data) {
       const uuid = data.uuid;
@@ -316,7 +341,6 @@ module.exports = function (options) {
     }
   }
   const checkCartItems = function (basket) {
-    const actions = ['add', 'remove'];
     const ids = [];
     for (let item of basket.list) {
       ids.push(item.product_id);
@@ -325,6 +349,7 @@ module.exports = function (options) {
     const map = {};
     for (let item of products) {
       map[item.id] = item;
+      map[item.id].active_quantity = 0;
       for (let key of Object.keys(item.product_flags)) {
         const values = [];
         for (let flag of item.product_flags[key]) {
@@ -337,15 +362,7 @@ module.exports = function (options) {
     for (let item of basket.list) {
       const id = item.product_id;
       const pid = item.parent_id;
-      let hasParent = false;
-      let parentTypes = {};
-      let activeParentTypes = {};
-      let activeParentTypeOnParent;
-      let activeQuantityFlag;
-      let active_quantity = 0;
-      if (!actions.includes(item.action)) {
-        throw `wrong_action@product_id=${id}`;
-      }
+      let presentParentTypes = {};
       if (!map[id]) {
         throw `missing_product_entry@product_id=${id}`;
       }
@@ -367,66 +384,22 @@ module.exports = function (options) {
         if (!map[id].product_flags.parent_type) {
           throw `missing_parent_type_flag@product_id=${id},parent_id=${pid}`;
         }
-        parentTypes = utils.arrayIncludesSome(map[pid].product_flags.type, map[id].product_flags.parent_type);
-        if (parentTypes.total == 0) {
-          throw `missing_parent_type_for_parent@product_id=${id},parent_id=${pid}`;
-        }
-        hasParent = true;
-        if (map[id].product_flags.active_parent_type) {
-          activeParentTypes = utils.arrayIncludesSome(Object.keys(parentTypes.included), map[id].product_flags.active_parent_type);
-          if (activeParentTypes.total == 1) {
-            activeParentTypeOnParent = Object.keys(activeParentTypes.included)[0];
-            activeQuantityFlag = `active_quantity@active_parent_type=${activeParentTypeOnParent}`;
-            if (Array.isArray(map[id].product_flags[activeQuantityFlag]) && map[id].product_flags[activeQuantityFlag].length == 1) {
-              active_quantity = map[id].product_flags[activeQuantityFlag][0];
-            }
+        presentParentTypes = utils.arrayIncludesSome(map[pid].product_flags.type, map[id].product_flags.parent_type);
+        for (let ppt in presentParentTypes.included) {
+          const activeQuantityFlag = `active_quantity@parent_type=${ppt}`;
+          if (map[id].product_flags[activeQuantityFlag]) {
+            map[id].active_quantity += map[id].product_flags[activeQuantityFlag][0];
           }
         }
       }
-      if (map[id].stock >= 0 && active_quantity > map[id].stock) {
-        throw `insufficient_stock_for_active_quantity@product_id=${id}`;
+      if (map[id].stock >= 0 && item.quantity > map[id].stock) {
+        throw `insufficient_stock@product_id=${id}`;
       }
-      if (item.action == 'add') {
-        if (map[id].stock >= 0 && item.quantity + active_quantity > map[id].stock) {
-          throw `insufficient_stock@product_id=${id}`;
-        }
-        item.subtotal = utils.multiply(item.unit_price, item.quantity);
-      }
-      if (item.action == 'remove') {
-        if (!pid) {
-          throw `cannot_remove_parent_product@product_id=${id}`;
-        }
-        if (!hasParent) {
-          throw `cannot_remove_product_without_parent@product_id=${id}`;
-        }
-        if (!map[id].product_flags.active_parent_type) {
-          throw `missing_active_parent_type_flag@product_id=${id},parent_id=${pid}`;
-        }
-        if (activeParentTypes.total == 0) {
-          throw `missing_active_parent_type_for_parent@product_id=${id},parent_id=${pid}`;
-        }
-        if (activeParentTypes.total > 1) {
-          throw `multiple_active_parent_types_for_parent@product_id=${id},parent_id=${pid}`;
-        }
-        if (!map[id].product_flags[activeQuantityFlag]) {
-          throw `missing_active_quantity_flag@product_id=${id},parent_id=${pid},active_parent_type=${activeParentTypeOnParent}`;
-        }
-        if (Array.isArray(map[id].product_flags.subtractable_price) && map[id].product_flags.subtractable_price.length > 1) {
-          throw `multiple_values_for_subtractable_price_flag@product_id=${id}`;
-        }
-        if (Array.isArray(map[id].product_flags[activeQuantityFlag]) && map[id].product_flags[activeQuantityFlag].length > 1) {
-          throw `multiple_values_for_active_quantity_flag@product_id=${id}`;
-        }
-        if (Array.isArray(map[id].product_flags.subtractable_price) && map[id].product_flags.subtractable_price[0] == 'yes') {
-          if (item.quantity > active_quantity) {
-            throw `insufficient_active_quantity@product_id=${id}`;
-          }
-          item.subtotal = utils.multiply(item.unit_price, item.quantity) * -1;
-        }
-      }
+      item.subtotal = utils.multiply(item.unit_price, item.quantity);
       total = utils.sum(total, item.subtotal);
     }
     basket.cart.total = total;
+    basket.context = map;
     return basket;
   }
   // run each method within its own db instance

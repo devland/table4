@@ -75,18 +75,6 @@ CREATE TABLE "order_history" (
 	"created_at"	TEXT NOT NULL,
 	PRIMARY KEY("id")
 );
-CREATE TABLE "orders" (
-	"id"	INTEGER NOT NULL,
-	"flow"	TEXT NOT NULL,
-	"user_id"	INTEGER,
-	"uuid"	TEXT UNIQUE,
-	"currency"	TEXT NOT NULL,
-	"total"	REAL NOT NULL,
-	"status"	TEXT NOT NULL,
-	"notes"	TEXT,
-	"created_at"	TEXT NOT NULL,
-	PRIMARY KEY("id" AUTOINCREMENT)
-);
 CREATE INDEX "tokens-expires_at" ON "tokens" (
 	"expires_at"	DESC
 );
@@ -150,24 +138,6 @@ CREATE INDEX "order_history-status_created_at" ON "order_history" (
 CREATE INDEX "order_history-author_id" ON "order_history" (
 	"author_id"	ASC
 );
-CREATE INDEX "orders-created_at" ON "orders" (
-	"created_at"	DESC
-);
-CREATE INDEX "orders-currency" ON "orders" (
-	"currency"	ASC
-);
-CREATE INDEX "orders-flow" ON "orders" (
-	"flow"	ASC
-);
-CREATE INDEX "orders-status" ON "orders" (
-	"status"	ASC
-);
-CREATE INDEX "orders-user_id" ON "orders" (
-	"user_id"	ASC
-);
-CREATE INDEX "orders-total" ON "orders" (
-	"total"	ASC
-);
 CREATE TABLE "order_items" (
 	"order_id"	INTEGER NOT NULL,
 	"product_id"	INTEGER NOT NULL,
@@ -209,4 +179,35 @@ CREATE INDEX "cart_items-parent_id" ON "cart_items" (
 );
 CREATE INDEX "cart_items-quantity" ON "cart_items" (
 	"quantity"	ASC
+);
+CREATE TABLE "orders" (
+	"id"	INTEGER NOT NULL,
+	"flow"	TEXT NOT NULL,
+	"user_id"	INTEGER,
+	"uuid"	TEXT UNIQUE,
+	"currency"	TEXT NOT NULL,
+	"total"	REAL NOT NULL,
+	"status"	TEXT NOT NULL,
+	"notes"	TEXT,
+	"context"	TEXT NOT NULL,
+	"created_at"	TEXT NOT NULL,
+	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE INDEX "orders-created_at" ON "orders" (
+	"created_at"	DESC
+);
+CREATE INDEX "orders-currency" ON "orders" (
+	"currency"	ASC
+);
+CREATE INDEX "orders-flow" ON "orders" (
+	"flow"	ASC
+);
+CREATE INDEX "orders-status" ON "orders" (
+	"status"	ASC
+);
+CREATE INDEX "orders-total" ON "orders" (
+	"total"	ASC
+);
+CREATE INDEX "orders-user_id" ON "orders" (
+	"user_id"	ASC
 );
