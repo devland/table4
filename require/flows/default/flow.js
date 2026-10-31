@@ -110,7 +110,8 @@ module.exports = {
       pending_refund: {
         access: ['waiter', 'manager']
       }
-    }
+    },
+    incrementStock: true
   },
   pending_refund: {
     label: 'pending_refund',

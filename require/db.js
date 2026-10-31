@@ -99,16 +99,7 @@ module.exports = function (options) {
       return flags;
     },
     update: function (data) {
-      try {
-        this.db.exec('begin');
-        generic.update.apply(this, ['product_flags', ['id'], ['product_id', 'key', 'value'], data, { skipBegin: true }]);
-        checkProducts(data);
-        this.db.exec('commit');
-      }
-      catch (error) {
-        generic.rollback(this.db);
-        throw error;
-      }
+      return generic.update.apply(this, ['product_flags', ['id'], ['product_id', 'key', 'value'], data, { skipBegin: true }]);
     }
   }
   this.products = {
@@ -169,11 +160,36 @@ module.exports = function (options) {
         order by products.id asc`).all();
         const ids = products.map(item => item.id);
         entries[i].components = self.products.getByIds.apply(this, [{ ids }]).list;
+        for (let j = 0; j < entries[i].components.length; j++) {
+          entries[i].components[j].active_quantity = generic.getActiveQuantity(entries[i].components[j], entries[i]);
+        }
       }
       return entries;
     },
     update: function (data) {
-      return generic.update.apply(this, ['products', ['id'], ['stock'], data]);
+      try {
+        this.db.exec('begin');
+        const ids = data.map(item => item.id);
+        const entries = self.products.getByIds.apply(this, [{ ids }]).list;
+        const map = {};
+        for (let item of entries) {
+          map[item.id] = item;
+        }
+        for (let item of data) {
+          if (utils.fractionalCount(item.stock) && generic.getFlag('allow_fractional_quantity', map[item.id]) != 'yes') {
+            throw `fractional_quantity_not_allowed@product_id=${item.id}`;
+          }
+        }
+        const result = generic.update.apply(this, ['products', ['id'], ['stock'], data, {
+          skipBegin: true
+        }]);
+        this.db.exec('commit');
+        return result;
+      }
+      catch (error) {
+        generic.rollback(this.db);
+        throw error;
+      }
     }
   }
   this.currencies = {
@@ -349,20 +365,11 @@ module.exports = function (options) {
     const map = {};
     for (let item of products) {
       map[item.id] = item;
-      map[item.id].active_quantity = 0;
-      for (let key of Object.keys(item.product_flags)) {
-        const values = [];
-        for (let flag of item.product_flags[key]) {
-          values.push(flag.value);
-        }
-        item.product_flags[key] = values;
-      }
     }
     let total = 0;
     for (let item of basket.list) {
       const id = item.product_id;
       const pid = item.parent_id;
-      let presentParentTypes = {};
       if (!map[id]) {
         throw `missing_product_entry@product_id=${id}`;
       }
@@ -384,22 +391,18 @@ module.exports = function (options) {
         if (!map[id].product_flags.parent_type) {
           throw `missing_parent_type_flag@product_id=${id},parent_id=${pid}`;
         }
-        presentParentTypes = utils.arrayIncludesSome(map[pid].product_flags.type, map[id].product_flags.parent_type);
-        for (let ppt in presentParentTypes.included) {
-          const activeQuantityFlag = `active_quantity@parent_type=${ppt}`;
-          if (map[id].product_flags[activeQuantityFlag]) {
-            map[id].active_quantity += map[id].product_flags[activeQuantityFlag][0];
-          }
-        }
+        map[id].active_quantity = generic.getActiveQuantity(map[id], map[pid]);
+      }
+      if (utils.fractionalCount(item.quantity) && generic.getFlag('allow_fractional_quantity', map[id]) != 'yes') {
+        throw `fractional_quantity_not_allowed@product_id=${id}`;
       }
       if (map[id].stock >= 0 && item.quantity > map[id].stock) {
         throw `insufficient_stock@product_id=${id}`;
       }
-      item.subtotal = utils.multiply(item.unit_price, item.quantity);
+      item.subtotal = utils.parseNumber(utils.multiply(item.unit_price, item.quantity), true);
       total = utils.sum(total, item.subtotal);
     }
     basket.cart.total = total;
-    basket.context = map;
     return basket;
   }
   // run each method within its own db instance

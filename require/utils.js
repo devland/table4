@@ -2,8 +2,8 @@ const fs = require('fs');
 const path = require('path');
 const config = require('../config.js');
 const ut = {
-  parseNumber: (value) => {
-    return isNaN(value) ? value : parseFloat(value);
+  parseNumber: (value, fixed) => {
+    return isNaN(value) ? value : parseFloat(fixed ? value.toFixed(config.fractionalDigits) : value);
   },
   fractional: (number) => { // returns fractional part of number
     return parseFloat('0.' + number.toString().split('.')?.[1] || '0');

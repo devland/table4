@@ -5,6 +5,35 @@ module.exports = {
       // to do
     }
   },
+  getFlag: function(key, entry) {
+    if (!entry.product_flags[key]) {
+      return undefined;
+    }
+    if (entry.product_flags[key].length > 1) {
+      throw `multiple_values_for_flag_${key}@product_id=${entry.id}`;
+    }
+    return entry.product_flags[key][0].value;
+  },
+  getActiveQuantity: function (entry, parent) {
+    let active_quantity = 0;
+    const mapFlags = (flags) => {
+      const map = {};
+      for (let key in flags) {
+        map[key] = flags[key].map(item => item.value);
+      }
+      return map;
+    }
+    const entryFlags = mapFlags(entry.product_flags);
+    const parentFlags = mapFlags(parent.product_flags);
+    const presentParentTypes = utils.arrayIncludesSome(parentFlags.type, entryFlags.parent_type);
+    for (let ppt in presentParentTypes.included) {
+      const activeQuantityFlag = `active_quantity@parent_type=${ppt}`;
+      if (entryFlags[activeQuantityFlag]) {
+        active_quantity += entryFlags[activeQuantityFlag][0];
+      }
+    }
+    return active_quantity;
+  },
   find: function (options, data) {
     if (!options.canOrderBy.includes(data.orderBy)) {
       throw 'wrong_orderBy';
