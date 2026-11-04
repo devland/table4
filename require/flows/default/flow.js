@@ -1,6 +1,5 @@
 module.exports = {
   created: {
-    label: 'created',
     triggers: ['created'],
     canMoveTo: {
       payment_pending: {
@@ -14,7 +13,6 @@ module.exports = {
     decrementStock: true
   },
   payment_pending: {
-    label: 'payment_pending',
     triggers: ['payment_pending'],
     canMoveTo: {
       paid: {
@@ -26,7 +24,6 @@ module.exports = {
     }
   },
   payment_failed: {
-    label: 'payment_failed',
     triggers: ['payment_failed'],
     canMoveTo: {
       payment_pending: {
@@ -38,7 +35,6 @@ module.exports = {
     }
   },
   paid: {
-    label: 'paid',
     triggers: ['paid'],
     canMoveTo: {
       preparing: {
@@ -50,7 +46,6 @@ module.exports = {
     }
   },
   preparing: {
-    label: 'preparing',
     canMoveTo: {
       ready_to_serve: {
         access: ['chef']
@@ -61,7 +56,6 @@ module.exports = {
     }
   },
   ready_to_serve: {
-    label: 'ready_to_serve',
     canMoveTo: {
       served: {
         access: ['waiter']
@@ -72,7 +66,6 @@ module.exports = {
     }
   },
   served: {
-    label: 'served',
     canMoveTo: {
       return_pending: {
         access: ['client', 'waiter', 'manager']
@@ -83,7 +76,6 @@ module.exports = {
     }
   },
   return_pending: {
-    label: 'return_pending',
     canMoveTo: {
       returned: {
         access: ['waiter', 'manager']
@@ -94,7 +86,6 @@ module.exports = {
     }
   },
   returned: {
-    label: 'returned',
     canMoveTo: {
       preparing: {
         access: ['chef']
@@ -105,7 +96,6 @@ module.exports = {
     }
   },
   cancelled: {
-    label: 'cancelled',
     canMoveTo: {
       pending_refund: {
         access: ['waiter', 'manager']
@@ -114,7 +104,6 @@ module.exports = {
     incrementStock: true
   },
   pending_refund: {
-    label: 'pending_refund',
     triggers: ['pending_refund'],
     canMoveTo: {
       refund_failed: {
@@ -126,11 +115,9 @@ module.exports = {
     }
   },
   refund_failed: {
-    label: 'refund_failed',
     triggers: ['refund_failed']
   },
   refunded: {
-    label: 'refunded',
     triggers: ['refunded']
   }
 }

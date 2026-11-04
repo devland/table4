@@ -1,8 +1,25 @@
 const utils = require('./utils.js');
 module.exports = {
   updateStock: function (flow, basket) {
-    if (flow.stages[basket.cart.status].decrementStock) {
-      // to do
+    const stage = flow.stages[basket.cart.status];
+    if (stage.decrementStock && stage.incrementStock) {
+      throw `both_increment_and_decrement_stock_not_allowed@stage=${basket.cart.status}`;
+    }
+    let sql;
+    if (stage.decrementStock) {
+      sql = this.db.prepare('update products set stock = stock - :quantity where id = :id');
+    }
+    if (stage.incrementStock) {
+      sql = this.db.prepare('update products set stock = stock + :quantity where id = :id');
+    }
+    if (!sql) {
+      return;
+    }
+    for (let item of basket.list) {
+      sql.run({
+        id: item.product_id,
+        quantity: item.quantity
+      });
     }
   },
   getFlag: function(key, entry) {
