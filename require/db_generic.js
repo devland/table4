@@ -78,7 +78,7 @@ module.exports = {
         if (!options.tables.includes(clause.type)) {
           throw 'wrong_table';
         }
-        const name = `var_${index}`;
+        let name = `var_${index}`;
         let column = '';
         column = `"${utils.clean(clause.type)}".`;
         column += `"${utils.clean(clause.key)}"`;
@@ -91,15 +91,18 @@ module.exports = {
           }
           const inValues = [];
           for (let valueItem of clause.value) {
-            inValues.push(`'${utils.clean(valueItem)}'`);
+            name = `var_${index}`; 
+            inValues.push(`:${name}`);
+            params[name] = valueItem;
+            index++;
           }
           groupClauses += `${groupClauses ? ` ${clause.logicOperator} ` : ''}${column} ${clause.operator} (${inValues.join(', ')})`;
         }
         else {
           groupClauses += `${groupClauses ? ` ${clause.logicOperator} ` : ''}${column} ${clause.operator} :${name}`;
           params[name] = clause.value;
+          index++;
         }
-        index++;
       }
       const groupStart = item.groupStart ? '( ' : '';
       const groupEnd = item.groupEnd ? ' )' : '';

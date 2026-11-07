@@ -256,9 +256,8 @@ module.exports = function (options) {
         basket.cart.status = flow.start;
         basket.cart.notes = data.notes;
         basket.cart.created_at = new Date().toISOString();
-        delete basket.cart.key;
         delete basket.cart.updated_at;
-        this.db.prepare('insert into orders (flow, user_id, uuid, currency, total, status, notes, created_at) values (:flow, :user_id, :uuid, :currency, :total, :status, :notes, :created_at)').run(basket.cart);
+        this.db.prepare('insert into orders (flow, user_id, uuid, key, currency, total, status, notes, created_at) values (:flow, :user_id, :uuid, :key, :currency, :total, :status, :notes, :created_at)').run(basket.cart);
         const order = this.db.prepare('select * from orders where uuid = :uuid').get({ uuid: basket.cart.uuid });
         const insertOrderItem = this.db.prepare('insert into order_items (order_id, product_id, parent_id, quantity, unit_price, subtotal) values (:order_id, :product_id, :parent_id, :quantity, :unit_price, :subtotal)');
         for (let i = 0; i < basket.list.length; i++) {

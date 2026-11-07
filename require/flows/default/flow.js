@@ -10,7 +10,7 @@ module.exports = {
       }
     },
     start: true,
-    decrementStock: true
+    payment: true
   },
   payment_pending: {
     triggers: ['payment_pending'],
@@ -43,7 +43,8 @@ module.exports = {
       cancelled: {
         access: ['client', 'waiter', 'manager']
       }
-    }
+    },
+    decrementStock: true
   },
   preparing: {
     canMoveTo: {

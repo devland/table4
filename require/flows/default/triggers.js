@@ -1,5 +1,5 @@
 module.exports = {
-  created: () => {
+  created: (order) => {
     console.log('... order created trigger :)');
   }
 }
