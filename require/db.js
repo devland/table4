@@ -266,9 +266,12 @@ module.exports = function (options) {
           insertOrderItem.run(basket.list[i]);
         }
         self.cart.remove.apply(this, [{ uuid: data.uuid, key: data.key }]);
-        generic.updateStock.apply(this, [flow, basket]);
+        const order_items = this.db.prepare('select * from order_items where order_id = :order_id').get({ order_id: order.id });
+        const orderEntry = { order, order_items };
+        generic.processOrder.apply(this, [flow, orderEntry]);
         this.db.exec('commit');
-        return self.orders.get({ uuid: basket.cart.uuid }).list[0];
+        generic.runOrderTriggers.apply(this, [flow, orderEntry]);
+        return orderEntry;
       }
       catch (error) {
         generic.rollback(this.db);

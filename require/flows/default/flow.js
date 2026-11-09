@@ -9,8 +9,7 @@ module.exports = {
         access: ['client', 'waiter', 'manager']
       }
     },
-    start: true,
-    payment: true
+    start: true
   },
   payment_pending: {
     triggers: ['payment_pending'],
@@ -21,7 +20,8 @@ module.exports = {
       payment_failed: {
         access: ['system']
       }
-    }
+    },
+    payment: true
   },
   payment_failed: {
     triggers: ['payment_failed'],
@@ -32,7 +32,8 @@ module.exports = {
       cancelled: {
         access: ['client', 'waiter', 'manager']
       }
-    }
+    },
+    paymentFailed: true
   },
   paid: {
     triggers: ['paid'],
@@ -44,7 +45,8 @@ module.exports = {
         access: ['client', 'waiter', 'manager']
       }
     },
-    decrementStock: true
+    decrementStock: true,
+    paid: true
   },
   preparing: {
     canMoveTo: {
@@ -113,12 +115,23 @@ module.exports = {
       refunded: {
         access: ['system']
       }
-    }
+    },
+    refund: true
   },
   refund_failed: {
-    triggers: ['refund_failed']
+    triggers: ['refund_failed'],
+    canMoveTo: {
+      pending_refund: {
+        access: ['waiter', 'manager']
+      },
+      cancelled: {
+        access: ['waiter', 'manager']
+      }
+    },
+    refundFailed: true
   },
   refunded: {
-    triggers: ['refunded']
+    triggers: ['refunded'],
+    refunded: true
   }
 }

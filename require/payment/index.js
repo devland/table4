@@ -1,5 +1,14 @@
 const utils = require('../utils.js');
 const config = require('./config.js');
+const apiUrl = 'https://api.stripe.com/v1';
+const handleResult = (result, extra) => {
+  if (result.id) {
+    return { done: true, result, ...extra };
+  }
+  else {
+    return { done: false, result };
+  }
+}
 module.exports = {
   createCheckout: async function (order) {
     let body = '';
@@ -12,7 +21,7 @@ module.exports = {
       body += `&line_items[${i}][quantity]=${order.items[i].quantity}`;
     }
     body += `&metadata[table4OrderId]=${order.id}`;
-    return await utils.fetch('https://api.stripe.com/v1/checkout/sessions', {
+    const result = await utils.fetch(`${apiUrl}/checkout/sessions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -20,23 +29,33 @@ module.exports = {
       },
       body
     });
+    return handleResult(result, {
+      url: result.url,
+      paid: result.payment_status == 'paid'
+    });
   },
   getCheckout: async function (checkoutId) {
-    return await utils.fetch(`https://api.stripe.com/v1/checkout/sessions/${checkoutId}`, {
+    const result = await utils.fetch(`${apiUrl}/checkout/sessions/${checkoutId}`, {
       method: 'GET',
       headers: {
         'Authorization': 'Basic ' + btoa(`${config.secret}:`)
       }
     });
+    return handleResult(result, {
+      paid: result.payment_status == 'paid'
+    });
   },
   refund: async function (paymentId) {
-    const result = await utils.fetch(`https://api.stripe.com/v1/refunds`, {
+    const result = await utils.fetch(`${apiUrl}/refunds`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         'Authorization': 'Basic ' + btoa(`${config.secret}:`)
       },
       body: `payment_intent=${paymentId}`
+    });
+    return handleResult(result, {
+      refunded: result.status == 'succeeded'
     });
   }
 }

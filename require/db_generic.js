@@ -1,9 +1,31 @@
 const utils = require('./utils.js');
 module.exports = {
-  updateStock: function (flow, basket) {
-    const stage = flow.stages[basket.cart.status];
+  processOrder: function (flow, entry) {
+    module.exports.updateStock.apply(this, [flow, entry]);
+    module.exports.processPayment.apply(this, [flow, entry]);
+  },
+  runOrderTriggers: function (flow, entry) {
+    const list = flow.stages[entry.order.status].triggers;
+    if (!list) {
+      return;
+    }
+    for (let item of list) {
+      if (flow.triggers[item]) {
+        flow.triggers[item].apply(this, [entry]);
+      }
+    }
+  },
+  processPayment: function (flow, entry) {
+    const stage = flow.stages[entry.order.status];
+    if (!stage.payment) {
+      return;
+    }
+    // to do
+  },
+  updateStock: function (flow, entry) {
+    const stage = flow.stages[entry.order.status];
     if (stage.decrementStock && stage.incrementStock) {
-      throw `both_increment_and_decrement_stock_not_allowed@stage=${basket.cart.status}`;
+      throw `both_increment_and_decrement_stock_not_allowed@stage=${entry.order.status}`;
     }
     let sql;
     if (stage.decrementStock) {
@@ -15,7 +37,7 @@ module.exports = {
     if (!sql) {
       return;
     }
-    for (let item of basket.list) {
+    for (let item of entry.order_items) {
       sql.run({
         id: item.product_id,
         quantity: item.quantity
