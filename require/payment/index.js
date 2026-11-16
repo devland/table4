@@ -10,7 +10,7 @@ const handleResult = (result, extra) => {
   }
 }
 module.exports = {
-  createCheckout: async function (order) {
+  createPayment: async function (order) {
     let body = '';
     body += 'mode=payment';
     body +=`&success_url=${encodeURIComponent(`https://${config.host}/checkPayment?session_id={CHECKOUT_SESSION_ID}`)}`;
@@ -20,7 +20,7 @@ module.exports = {
       body += `&line_items[${i}][price_data][unit_amount]=${order.items[i].unit_price * 100}`; // in cents
       body += `&line_items[${i}][quantity]=${order.items[i].quantity}`;
     }
-    body += `&metadata[table4OrderId]=${order.id}`;
+    body += `&metadata[table4OrderId]=${order.table4_id}`;
     const result = await utils.fetch(`${apiUrl}/checkout/sessions`, {
       method: 'POST',
       headers: {
@@ -30,11 +30,13 @@ module.exports = {
       body
     });
     return handleResult(result, {
+      expires_at: new Date(result.expires_at).toISOString(),
       url: result.url,
-      paid: result.payment_status == 'paid'
+      paid: result.payment_status == 'paid',
+      total_amount: result.amount_total
     });
   },
-  getCheckout: async function (checkoutId) {
+  getPayment: async function (checkoutId) {
     const result = await utils.fetch(`${apiUrl}/checkout/sessions/${checkoutId}`, {
       method: 'GET',
       headers: {
@@ -42,17 +44,20 @@ module.exports = {
       }
     });
     return handleResult(result, {
-      paid: result.payment_status == 'paid'
+      expires_at: new Date(result.expires_at).toISOString(),
+      url: result.url,
+      paid: result.payment_status == 'paid',
+      total_amount: result.amount_total
     });
   },
-  refund: async function (paymentId) {
+  refund: async function (payment) {
     const result = await utils.fetch(`${apiUrl}/refunds`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         'Authorization': 'Basic ' + btoa(`${config.secret}:`)
       },
-      body: `payment_intent=${paymentId}`
+      body: `payment_intent=${payment.payment_intent}`
     });
     return handleResult(result, {
       refunded: result.status == 'succeeded'

@@ -66,15 +66,6 @@ CREATE TABLE "users" (
 	"created_at"	TEXT NOT NULL,
 	PRIMARY KEY("id" AUTOINCREMENT)
 );
-CREATE TABLE "order_history" (
-	"id"	INTEGER NOT NULL,
-	"order_id"	INTEGER NOT NULL,
-	"author_id"	INTEGER,
-	"status"	TEXT NOT NULL,
-	"notes"	TEXT,
-	"created_at"	TEXT NOT NULL,
-	PRIMARY KEY("id")
-);
 CREATE INDEX "tokens-expires_at" ON "tokens" (
 	"expires_at"	DESC
 );
@@ -127,51 +118,6 @@ CREATE INDEX "users-email" ON "users" (
 CREATE INDEX "users-type" ON "users" (
 	"type"	ASC
 );
-CREATE INDEX "order_history-order_id_created_at" ON "order_history" (
-	"order_id"	ASC,
-	"created_at"	DESC
-);
-CREATE INDEX "order_history-status_created_at" ON "order_history" (
-	"status"	ASC,
-	"created_at"	DESC
-);
-CREATE INDEX "order_history-author_id" ON "order_history" (
-	"author_id"	ASC
-);
-CREATE TABLE "cart_items" (
-	"uuid"	TEXT NOT NULL,
-	"product_id"	INTEGER NOT NULL,
-	"parent_id"	INTEGER,
-	"quantity"	REAL NOT NULL DEFAULT 0,
-	PRIMARY KEY("uuid","product_id")
-);
-CREATE INDEX "cart_items-parent_id" ON "cart_items" (
-	"parent_id"	ASC
-);
-CREATE INDEX "cart_items-quantity" ON "cart_items" (
-	"quantity"	ASC
-);
-CREATE TABLE "order_items" (
-	"order_id"	INTEGER NOT NULL,
-	"product_id"	INTEGER NOT NULL,
-	"parent_id"	INTEGER,
-	"quantity"	REAL NOT NULL,
-	"unit_price"	REAL NOT NULL,
-	"subtotal"	REAL NOT NULL,
-	PRIMARY KEY("order_id","product_id")
-);
-CREATE INDEX "order_items-parent_id" ON "order_items" (
-	"parent_id"	ASC
-);
-CREATE INDEX "order_items-quantity" ON "order_items" (
-	"quantity"	ASC
-);
-CREATE INDEX "order_items-subtotal" ON "order_items" (
-	"subtotal"	ASC
-);
-CREATE INDEX "order_items-unit_price" ON "order_items" (
-	"unit_price"	ASC
-);
 CREATE TABLE "orders" (
 	"id"	INTEGER NOT NULL,
 	"flow"	TEXT NOT NULL,
@@ -202,4 +148,60 @@ CREATE INDEX "orders-total" ON "orders" (
 );
 CREATE INDEX "orders-user_id" ON "orders" (
 	"user_id"	ASC
+);
+CREATE TABLE "cart_items" (
+	"uuid"	TEXT NOT NULL,
+	"product_id"	INTEGER NOT NULL,
+	"parent_id"	INTEGER,
+	"name"	TEXT,
+	"quantity"	REAL NOT NULL DEFAULT 0,
+	PRIMARY KEY("uuid","product_id")
+);
+CREATE INDEX "cart_items-parent_id" ON "cart_items" (
+	"parent_id"	ASC
+);
+CREATE INDEX "cart_items-quantity" ON "cart_items" (
+	"quantity"	ASC
+);
+CREATE TABLE "order_items" (
+	"order_id"	INTEGER NOT NULL,
+	"product_id"	INTEGER NOT NULL,
+	"parent_id"	INTEGER,
+	"name"	TEXT,
+	"quantity"	REAL NOT NULL,
+	"unit_price"	REAL NOT NULL,
+	"subtotal"	REAL NOT NULL,
+	PRIMARY KEY("order_id","product_id")
+);
+CREATE INDEX "order_items-parent_id" ON "order_items" (
+	"parent_id"	ASC
+);
+CREATE INDEX "order_items-quantity" ON "order_items" (
+	"quantity"	ASC
+);
+CREATE INDEX "order_items-subtotal" ON "order_items" (
+	"subtotal"	ASC
+);
+CREATE INDEX "order_items-unit_price" ON "order_items" (
+	"unit_price"	ASC
+);
+CREATE TABLE "order_history" (
+	"id"	INTEGER NOT NULL,
+	"order_id"	INTEGER NOT NULL,
+	"user_id"	INTEGER,
+	"status"	TEXT NOT NULL,
+	"notes"	TEXT,
+	"created_at"	TEXT NOT NULL,
+	PRIMARY KEY("id")
+);
+CREATE INDEX "order_history-author_id" ON "order_history" (
+	"user_id"	ASC
+);
+CREATE INDEX "order_history-order_id_created_at" ON "order_history" (
+	"order_id"	ASC,
+	"created_at"	DESC
+);
+CREATE INDEX "order_history-status_created_at" ON "order_history" (
+	"status"	ASC,
+	"created_at"	DESC
 );

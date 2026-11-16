@@ -1,8 +1,20 @@
 const utils = require('./utils.js');
+const payment = require('./payment');
 module.exports = {
-  processOrder: function (flow, entry) {
+  processOrder: function (flow, entry, user_id) {
+    module.exports.startPayment.apply(this, [flow, entry]);
+    module.exports.refund.apply(this, [flow, entry]);
     module.exports.updateStock.apply(this, [flow, entry]);
-    module.exports.processPayment.apply(this, [flow, entry]);
+    module.exports.addOrderHistoryEntry.apply(this, [{
+      order_id: entry.order.id,
+      user_id: user_id,
+      status: entry.order.status,
+      notes: JSON.stringify({
+        payment: entry.payment,
+        refund: entry.refund
+      })
+    }]);
+    module.exports.runOrderTriggers.apply(this, [flow, entry]);
   },
   runOrderTriggers: function (flow, entry) {
     const list = flow.stages[entry.order.status].triggers;
@@ -15,12 +27,63 @@ module.exports = {
       }
     }
   },
-  processPayment: function (flow, entry) {
+  startPayment: function (flow, entry) {
     const stage = flow.stages[entry.order.status];
     if (!stage.payment) {
       return;
     }
+    if (module.exports.getOrderHistoryEntry(entry.order.status).id) {
+      throw `payment_already_pending@order=${entry.order.id},status=${entry.order.status}`;
+    }
+    const toPay = {
+      table4_id: entry.order.id,
+      currency: entry.order.currency,
+      items: []
+    }
+    for (let item of entry.order_items) {
+      toPay.items.push({
+        name: item.name,
+        unit_price: item.unit_price,
+        quantity: item.quantity
+      });
+    }
+    entry.payment = payment.createPayment(toPay);
+  },
+  refund: function (flow, entry) {
+    const stage = flow.stages[entry.order.status];
+    if (!stage.refund) {
+      return;
+    }
+    const historyEntry = module.exports.getOrderHistoryEntry(entry.order.status);
+    if (module.exports.getOrderHistoryEntry(entry.order.status).id) {
+      throw `refund_already_pending@order=${entry.order.id},status=${entry.order.status}`;
+    }
+    const notes = JSON.parse(historyEntry.notes);
+    const result = payment.refund(notes.payment);
     // to do
+  },
+  checkOrderMoveToStatus: function (flow, entry, status, authorType) {
+    const stage = flow.stages[entry.order.status];
+    const target = stage.canMoveTo[status];
+    if (!target || !target.access.includes(authorType)) {
+      throw `order_cannot_move_to_status@order=${entry.order.id},targetStatus=${status}`;
+    }
+    return true;
+  },
+  addOrderHistoryEntry: function (data) {
+    data.created_at = new Date().toISOString();
+    return this.db.prepare('insert into order_history (order_id, user_id, status, notes, created_at) values (:order_id, :user_id, :status, :notes, :created_at)').run(data);
+  },
+  getOrderHistoryEntry: function (status) {
+    return this.db.prepare('select * from order_history where status = :status').get({ status });
+  },
+  getStageFromFlag: function (flow, flag) {
+    for (let key in flow.stages) {
+      const stage = flow.stages[ley];
+      if (stage[flag]) {
+        return stage;
+      }
+    }
   },
   updateStock: function (flow, entry) {
     const stage = flow.stages[entry.order.status];
@@ -280,15 +343,18 @@ module.exports = {
       throw error;
     }
   },
-  getProductFlags: function (entries) {
-    const ids = [];
+  getProductsExtra: function (entries) {
+    let ids = [];
     const map = {};
     for (let i = 0; i < entries.length; i++) {
       entries[i].product_flags = {};
+      entries[i].tags = {};
+      entries[i].prices = {};
       ids.push(entries[i].id);
       map[entries[i].id] = i;
     }
-    const product_flags = this.db.prepare(`select * from product_flags where product_id in (${ids.join(', ')}) order by product_id asc`).all();
+    ids = ids.join(', ');
+    const product_flags = this.db.prepare(`select * from product_flags where product_id in (${ids}) order by product_id asc`).all();
     for (let item of product_flags) {
       entries[map[item.product_id]].product_flags[item.key] ??= [];
       item.value = utils.parseNumber(item.value);
@@ -297,17 +363,7 @@ module.exports = {
         value: item.value
       });
     }
-    return entries;
-  },
-  getTags: function (table, entries) {
-    const ids = [];
-    const map = {};
-    for (let i = 0; i < entries.length; i++) {
-      entries[i].tags = {};
-      ids.push(entries[i].id);
-      map[entries[i].id] = i;
-    }
-    const tags = this.db.prepare(`select * from tags where for_table = :table and for_id in (${ids.join(', ')}) order by for_id asc`).all({ table });
+    const tags = this.db.prepare(`select * from tags where for_table = 'products' and for_id in (${ids}) order by for_id asc`).all();
     for (let item of tags) {
       entries[map[item.for_id]].tags[item.key] ??= [];
       item.value = utils.parseNumber(item.value);
@@ -317,33 +373,29 @@ module.exports = {
         value: item.value
       });
     }
-    return entries;
-  },
-  getPrices: function (entries) {
-    const ids = [];
-    const map = {};
-    for (let i = 0; i < entries.length; i++) {
-      entries[i].prices = {};
-      ids.push(entries[i].id);
-      map[entries[i].id] = i;
-    }
-    const prices = this.db.prepare(`select * from prices where product_id in (${ids.join(', ')}) order by product_id asc`).all();
+    const prices = this.db.prepare(`select * from prices where product_id in (${ids}) order by product_id asc`).all();
     for (let item of prices) {
       entries[map[item.product_id]].prices[item.currency] = utils.parseNumber(item.value);
     }
     return entries;
   },
-  getOrderItems: function (entries) {
-    const ids = [];
+  getOrdersExtra: function (entries) {
+    let ids = [];
     const map = {};
     for (let i = 0; i < entries.length; i++) {
       entries[i].order_items = [];
+      entries[i].order_history = [];
       ids.push(entries[i].id);
       map[entries[i].id] = i;
     }
-    const order_items = this.db.prepare(`select * from order_items where order_id in (${ids.join(', ')}) order by order_id asc`).all();
+    ids = ids.join(', ');
+    const order_items = this.db.prepare(`select * from order_items where order_id in (${ids}) order by order_id asc`).all();
     for (let item of order_items) {
       entries[map[item.order_id]].order_items.push(item);
+    }
+    const order_history = this.db.prepare(`select * from order_history where order_id in (${ids}) order by order_id asc`).all();
+    for (let item of order_history) {
+      entries[map[item.order_id]].order_history.push(item);
     }
     return entries;
   },

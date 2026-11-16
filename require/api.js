@@ -358,17 +358,18 @@ module.exports = {
   'getOrder': (request, response) => {
     const input = request.table4.body.input;
     const result = db.orders.get({
-      uuid: input.uuid
+      uuid: input.uuid,
+      key: input.key
     }).list?.[0];
     utils.handleRequest(response, null, result);
   },
   'getOwnOrders': (request, response) => {
     const input = request.table4.body.input;
-    if (request.table4.user.id != input.user_id) {
+    if (!request.table4.user.id) {
       throw 'access_denied';
     }
     const result = db.orders.get({
-      user_id: input.user_id
+      user_id: request.table4.user.id
     }, input.limit, input.offset);
     utils.handleRequest(response, null, result);
   },
@@ -379,8 +380,12 @@ module.exports = {
   },
   'updateOrderStatus': (request, response) => {
     const input = request.table4.body.input;
-    // to do order flow handling
-    const result = db.orders.update(input);
+    const result = db.orders.update({
+      user_id: request.table4.user?.id,
+      uuid: input.uuid,
+      key: input.key,
+      status: input.status
+    });
     utils.handleRequest(response, null, result);
   },
   'createOrder': (request, response) => {

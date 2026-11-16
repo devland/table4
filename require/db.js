@@ -119,9 +119,7 @@ module.exports = function (options) {
         limitOffset = ' limit :limit offset :offset';
       }
       let products = this.db.prepare(`select * from products${where} order by id asc${limitOffset}`).all(data);
-      products = generic.getProductFlags.apply(this, [products]);
-      products = generic.getTags.apply(this, ['products', products]);
-      products = generic.getPrices.apply(this, [products]);
+      products = generic.getProductsExtra.apply(this, [products]);
       if (options.getComponents) {
         products = self.products.getComponents.apply(this, [products]);
       }
@@ -136,11 +134,9 @@ module.exports = function (options) {
         groupBy: 'products.id'
       }
       const result = generic.find.apply(this, [params, data]);
-      result.list = generic.getProductFlags.apply(this, [result.list]);
-      result.list = generic.getTags.apply(this, ['products', result.list]);
-      result.list = generic.getPrices.apply(this, [result.list]);
+      result.list = generic.getProductsExtra.apply(this, [result.list]);
       if (options.getComponents) {
-        products = self.products.getComponents.apply(this, [products]);
+        result.list = self.products.getComponents.apply(this, [result.list]);
       }
       return result;
     },
@@ -213,9 +209,6 @@ module.exports = function (options) {
     get: function (data) {
       let fields = utils.cleanKeys(data);
       return this.db.prepare(`select * from order_history where ${fields.join(' and ')}`).all(data);
-    },
-    update: function (data) {
-      return generic.update.apply(this, ['prices', ['product_id', 'currency'], ['value'], data]);
     }
   }
   this.orders = {
@@ -223,7 +216,7 @@ module.exports = function (options) {
       let fields = utils.cleanKeys(data);
       const total = this.db.prepare(`select count(*) as total from orders where ${fields.join(' and ')}`).get(data);
       let list = this.db.prepare(`select * from orders where ${fields.join(' and ')} limit :limit offset :offset`).all({ ...data, limit, offset });
-      list = generic.getOrderItems.apply(this, [list]);
+      list = generic.getOrdersExtra.apply(this, [list]);
       return { list, ...total };
     },
     find: function (data) {
@@ -235,7 +228,7 @@ module.exports = function (options) {
         groupBy: 'orders.id'
       }
       const result = generic.find.apply(this, [options, data]);
-      result.list = generic.getOrderItems.apply(this, [result.list]);
+      result.list = generic.getOrdersExtra.apply(this, [result.list]);
       return result;
     },
     updateStatus: function (data) {
@@ -259,18 +252,17 @@ module.exports = function (options) {
         delete basket.cart.updated_at;
         this.db.prepare('insert into orders (flow, user_id, uuid, key, currency, total, status, notes, created_at) values (:flow, :user_id, :uuid, :key, :currency, :total, :status, :notes, :created_at)').run(basket.cart);
         const order = this.db.prepare('select * from orders where uuid = :uuid').get({ uuid: basket.cart.uuid });
-        const insertOrderItem = this.db.prepare('insert into order_items (order_id, product_id, parent_id, quantity, unit_price, subtotal) values (:order_id, :product_id, :parent_id, :quantity, :unit_price, :subtotal)');
+        const insertOrderItem = this.db.prepare('insert into order_items (order_id, product_id, parent_id, name, quantity, unit_price, subtotal) values (:order_id, :product_id, :parent_id, :name, :quantity, :unit_price, :subtotal)');
         for (let i = 0; i < basket.list.length; i++) {
           basket.list[i].order_id = order.id;
           delete basket.list[i].uuid;
           insertOrderItem.run(basket.list[i]);
         }
         self.cart.remove.apply(this, [{ uuid: data.uuid, key: data.key }]);
-        const order_items = this.db.prepare('select * from order_items where order_id = :order_id').get({ order_id: order.id });
+        const order_items = this.db.prepare('select * from order_items where order_id = :order_id').all({ order_id: order.id });
         const orderEntry = { order, order_items };
-        generic.processOrder.apply(this, [flow, orderEntry]);
+        generic.processOrder.apply(this, [flow, orderEntry, basket.cart.user_id]);
         this.db.exec('commit');
-        generic.runOrderTriggers.apply(this, [flow, orderEntry]);
         return orderEntry;
       }
       catch (error) {
@@ -325,7 +317,7 @@ module.exports = function (options) {
           currency: data.currency,
           updated_at: new Date().toISOString()
         });
-        const result = generic.update.apply(this, ['cart_items', ['uuid', 'product_id'], ['parent_id', 'quantity'], data.list, {
+        const result = generic.update.apply(this, ['cart_items', ['uuid', 'product_id'], ['parent_id', 'name', 'quantity'], data.list, {
           skipBegin: true
         }]);
         this.db.exec('commit');
