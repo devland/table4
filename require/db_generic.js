@@ -74,16 +74,17 @@ module.exports = {
     data.created_at = new Date().toISOString();
     return this.db.prepare('insert into order_history (order_id, user_id, status, notes, created_at) values (:order_id, :user_id, :status, :notes, :created_at)').run(data);
   },
-  getOrderHistoryEntry: function (status) {
-    return this.db.prepare('select * from order_history where status = :status').get({ status });
+  getOrderHistoryEntry: function (order_id, status) {
+    return this.db.prepare('select * from order_history where order_id = :order_id and status = :status').get({ order_id, status });
   },
   getStageFromFlag: function (flow, flag) {
     for (let key in flow.stages) {
-      const stage = flow.stages[ley];
+      const stage = flow.stages[key];
       if (stage[flag]) {
         return stage;
       }
     }
+    return undefined;
   },
   updateStock: function (flow, entry) {
     const stage = flow.stages[entry.order.status];
