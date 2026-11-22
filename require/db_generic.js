@@ -59,7 +59,7 @@ module.exports = {
     }
     const paidStatus = module.exports.getFlowStatusFromFlag(flow, 'paid');
     const paid = module.exports.getOrderHistoryEntry.apply(this, [entry.order.id, paidStatus]);
-    if (!paid.id) {
+    if (!paid) {
       throw `missing_paid_history_entry@order=${entry.order.id},status=${entry.order.status}`;
     }
     const notes = JSON.parse(paid.notes);

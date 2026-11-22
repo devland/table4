@@ -13,7 +13,7 @@ module.exports = {
   tokenDuration: 3600000 * 8, // in milliseconds
   fractionalDigits: 2, // number of digits after decimal point in subtotals
   users: { // main user types; define more in require/access.js
-    // internalType: userDefinedType
+    // internalType: 'userDefinedType'
     system: 'system',
     admin: 'admin',
     client: 'client',
