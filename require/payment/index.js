@@ -3,10 +3,10 @@ const config = require('./config.js');
 const apiUrl = 'https://api.stripe.com/v1';
 const handleResult = (result, extra) => {
   if (result.id) {
-    return { done: true, result, ...extra };
+    return { result, ...extra };
   }
   else {
-    return { done: false, result };
+    throw new Error(`pay_error@code=${result?.error.code},message=${result?.error.message}`);
   }
 }
 module.exports = {
@@ -30,27 +30,27 @@ module.exports = {
       body
     });
     return handleResult(result, {
-      expires_at: new Date(result.expires_at).toISOString(),
+      expires_at: new Date(result.expires_at * 1000 || null).toISOString(),
       url: result.url,
       paid: result.payment_status == 'paid',
       total_amount: result.amount_total
     });
   },
-  getPayment: async function (checkoutId) {
-    const result = await utils.fetch(`${apiUrl}/checkout/sessions/${checkoutId}`, {
+  getPayment: async function (payment) {
+    const result = await utils.fetch(`${apiUrl}/checkout/sessions/${payment.result.id}`, {
       method: 'GET',
       headers: {
         'Authorization': 'Basic ' + btoa(`${config.secret}:`)
       }
     });
     return handleResult(result, {
-      expires_at: new Date(result.expires_at).toISOString(),
+      expires_at: new Date(result.expires_at * 1000 || null).toISOString(),
       url: result.url,
       paid: result.payment_status == 'paid',
       total_amount: result.amount_total
     });
   },
-  refund: async function (payment) {
+  createRefund: async function (payment) {
     const result = await utils.fetch(`${apiUrl}/refunds`, {
       method: 'POST',
       headers: {
@@ -62,5 +62,16 @@ module.exports = {
     return handleResult(result, {
       refunded: result.status == 'succeeded'
     });
-  }
+  },
+  getRefund: async function (refund) {
+    const result = await utils.fetch(`${apiUrl}/refunds/${refund.result.id}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': 'Basic ' + btoa(`${config.secret}:`)
+      }
+    });
+    return handleResult(result, {
+      refunded: result.status == 'succeeded'
+    });
+  },
 }

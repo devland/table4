@@ -11,7 +11,9 @@ module.exports = {
     'checkCartItems',
     'removeCart',
     'createOrder',
-    'getOrder'
+    'getOrder',
+    'updateOrderStatus',
+    'checkOrderPayment'
   ],
   client: [
     'changePassword',

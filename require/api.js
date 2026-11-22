@@ -3,6 +3,7 @@ const fs = require('fs');
 const config = require('../config.js');
 const passhash = require('./passhash.js');
 const access = require('./access.js');
+const util = require('util');
 const utils = require('../require/utils.js');
 const email = require('./email');
 this.languages = utils.getLanguages();
@@ -95,7 +96,7 @@ module.exports = {
       user_id: user.id
     }, config.tokenDuration);
     if (!result.lastInsertRowid) {
-      throw new Error(result);
+      throw new Error(util.inspect(result));
     }
     utils.handleRequest(response, null, { token });
   },
@@ -134,7 +135,7 @@ module.exports = {
         type: 'password'
       }, config.tokenDuration);
       if (!result.lastInsertRowid) {
-        throw new Error(result);
+        throw new Error(util.inspect(result));
       }
       const lang = this.languages[input.language] ? this.languages[input.language] : this.languages['en'];
       result = await email.send({
@@ -143,7 +144,7 @@ module.exports = {
         text: `${lang.resetPasswordCode}: ${code}`
       });
       if (!result.id) {
-        throw new Error(result);
+        throw new Error(util.inspect(result));
       }
     }
     // show done even if there is no user to avoid user sniffing
@@ -198,7 +199,7 @@ module.exports = {
       data: JSON.stringify({ email: input.email })
     }, config.tokenDuration);
     if (!result.lastInsertRowid) {
-      throw new Error(result);
+      throw new Error(util.inspect(result));
     }
     const lang = this.languages[input.language] ? this.languages[input.language] : this.languages['en'];
     result = await email.send({
@@ -207,7 +208,7 @@ module.exports = {
       text: `${lang.changeEmailCode}: ${code}`
     });
     if (!result.id) {
-      throw new Error(result);
+      throw new Error(util.inspect(result));
     }
     utils.handleRequest(response, null, 'done');
   },
@@ -378,20 +379,30 @@ module.exports = {
     const result = db.orders.find(input);
     utils.handleRequest(response, null, result);
   },
-  'updateOrderStatus': (request, response) => {
+  'updateOrderStatus': async (request, response) => {
     const input = request.table4.body.input;
-    const result = db.orders.update({
+    const result = await db.orders.updateStatus({
       user_id: request.table4.user?.id,
+      user_type: request.table4.user?.type || config.users.client,
       uuid: input.uuid,
       key: input.key,
       status: input.status
     });
     utils.handleRequest(response, null, result);
   },
-  'createOrder': (request, response) => {
+  'createOrder': async (request, response) => {
     const input = request.table4.body.input;
     input.user_id = request.table4.user?.id;
-    const result = db.orders.create(input);
+    const result = await db.orders.create(input);
+    utils.handleRequest(response, null, result);
+  },
+  'checkOrderPayment': async (request, response) => {
+    const input = request.table4.body.input;
+    const result = await db.orders.checkPayment({
+      user_id: request.table4.user?.id,
+      uuid: input.uuid,
+      key: input.key
+    });
     utils.handleRequest(response, null, result);
   }
 }

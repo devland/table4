@@ -112,7 +112,7 @@ const ut = {
     if (error) {
       response.writeHead(500, headers);
       response.write(JSON.stringify(error.stack ? {
-        error: JSON.parse(JSON.stringify(error)),
+        error: error.message || error,
         stack: error.stack
       } : {
         error

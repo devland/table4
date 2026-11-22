@@ -2,6 +2,7 @@ module.exports = function (options) {
   const { DatabaseSync } = require('node:sqlite');
   const utils = require('./utils.js');
   const generic = require('./db_generic.js');
+  const pay = require('./payment');
   const config = options.config;
   const self = this;
   this.tokens = {
@@ -231,16 +232,47 @@ module.exports = function (options) {
       result.list = generic.getOrdersExtra.apply(this, [result.list]);
       return result;
     },
-    updateStatus: function (data) {
-      data.created_at = new Date().toISOString();
-      // to do
+    updateStatus: async function (data) {
+      try {
+        this.db.exec('begin');
+        const getOrder = () => {
+          return self.orders.get.apply(this, [{
+            uuid: data.uuid,
+            key: data.key
+          }]).list?.[0];
+        }
+        let order = getOrder();
+        if (!order.id) {
+          throw 'no_such_order';
+        }
+        const flow = options.flows[order.flow];
+        generic.checkOrderMoveToStatus(flow, order, data.status, data.user_type);
+        data.created_at = new Date().toISOString();
+        this.db.prepare('update orders set status = :status where id = :order_id').run({
+          status: data.status,
+          order_id: order.id
+        });
+        order.status = data.status;
+        const entry = {};
+        entry.order_items = order.order_items;
+        delete order.order_items;
+        entry.order = order;
+        await generic.processOrderStatus.apply(this, [flow, entry, data.user_id]);
+        order = getOrder();
+        this.db.exec('commit');
+        return order;
+      }
+      catch (error) {
+        generic.rollback(this.db);
+        throw error;
+      }
     },
-    create: function (data) {
+    create: async function (data) {
       try {
         this.db.exec('begin');
         const flow = options.flows[data.flow];
         if (!flow) {
-          throw 'wrong_flow';
+          throw `wrong_flow@flow=${data.flow}`;
         }
         let basket = self.cart.get.apply(this, [data]);
         basket = checkCartItems.apply(this, [basket]);
@@ -261,13 +293,52 @@ module.exports = function (options) {
         self.cart.remove.apply(this, [{ uuid: data.uuid, key: data.key }]);
         const order_items = this.db.prepare('select * from order_items where order_id = :order_id').all({ order_id: order.id });
         const orderEntry = { order, order_items };
-        generic.processOrder.apply(this, [flow, orderEntry, basket.cart.user_id]);
+        await generic.processOrderStatus.apply(this, [flow, orderEntry, basket.cart.user_id]);
         this.db.exec('commit');
         return orderEntry;
       }
       catch (error) {
         generic.rollback(this.db);
         throw error;
+      }
+    },
+    checkPayment: async function (data) {
+      const order = self.orders.get.apply(this, [{
+        uuid: data.uuid,
+        key: data.key
+      }]).list?.[0];
+      if (!order.id) {
+        throw 'no_such_order';
+      }
+      const flow = options.flows[order.flow];
+      const stage = flow.stages[order.status];
+      if (!stage.payment && !stage.refund) {
+        throw 'order_not_pending_payment_or_refund';
+      }
+      if (stage.payment) {
+        const paidStatus = generic.getFlowStatusFromFlag(flow, 'paid');
+        const paid = generic.getOrderHistoryEntry.apply(this, [order.id, paidStatus]);
+        if (paid) {
+          const notes = JSON.parse(paid.notes);
+          return { paid: notes.payment.paid };
+        }
+        const paymentStatus = generic.getFlowStatusFromFlag(flow, 'payment');
+        const payment = generic.getOrderHistoryEntry.apply(this, [order.id, paymentStatus]);
+        const notes = JSON.parse(payment.notes);
+        const result = await pay.getPayment(notes.payment);
+        if (result.paid) {
+          await self.orders.updateStatus.apply(this, [{
+            user_id: data.user_id,
+            user_type: config.users.system,
+            uuid: data.uuid,
+            key: data.key,
+            status: paidStatus
+          }]);
+        }
+        return { paid: result.paid };
+      }
+      if (stage.refund) {
+        // to do
       }
     }
   }
@@ -401,25 +472,31 @@ module.exports = function (options) {
   }
   // run each method within its own db instance
   const wrap = (table, method) => {
-    this.methods ??= {}; // preserve db methods without own db connection
-    this.methods[table] ??= {};
-    this.methods[table][method] = this[table][method];
-    this[table][method] = function () {
-      if (!this.db) {
-        this.db = new DatabaseSync(config.dbPath);
-      }
-      const result = self.methods[table][method].apply(this, arguments);
+    const closeDb = () => {
       if (this.db && this.db.isOpen && !this.db.isTransaction) {
         this.db.close();
         delete this.db;
       }
-      return result;
+    }
+    this.methods ??= {}; // preserve db methods without own db connection
+    this.methods[table] ??= {};
+    this.methods[table][method] = this[table][method];
+    this[table][method] = function () {
+      try {
+        if (!this.db || !this.db.isOpen) {
+          this.db = new DatabaseSync(config.dbPath);
+        }
+        const result = self.methods[table][method].apply(this, arguments);
+        closeDb();
+        return result;
+      }
+      catch (error) {
+        closeDb();
+        throw error;
+      }
     }
   }
   for (let table in this) {
-    if (table == 'generic') {
-      continue;
-    }
     for (let method in this[table]) {
       wrap(table, method);
     }

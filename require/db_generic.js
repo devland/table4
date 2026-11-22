@@ -1,18 +1,16 @@
 const utils = require('./utils.js');
-const payment = require('./payment');
+const pay = require('./payment');
 module.exports = {
-  processOrder: function (flow, entry, user_id) {
-    module.exports.startPayment.apply(this, [flow, entry]);
-    module.exports.refund.apply(this, [flow, entry]);
+  processOrderStatus: async function (flow, entry, user_id) {
+    entry.notes ??= {};
+    await module.exports.startPayment.apply(this, [flow, entry]);
+    await module.exports.startRefund.apply(this, [flow, entry]);
     module.exports.updateStock.apply(this, [flow, entry]);
     module.exports.addOrderHistoryEntry.apply(this, [{
       order_id: entry.order.id,
       user_id: user_id,
       status: entry.order.status,
-      notes: JSON.stringify({
-        payment: entry.payment,
-        refund: entry.refund
-      })
+      notes: JSON.stringify(entry.notes)
     }]);
     module.exports.runOrderTriggers.apply(this, [flow, entry]);
   },
@@ -27,13 +25,14 @@ module.exports = {
       }
     }
   },
-  startPayment: function (flow, entry) {
+  startPayment: async function (flow, entry) {
     const stage = flow.stages[entry.order.status];
     if (!stage.payment) {
       return;
     }
-    if (module.exports.getOrderHistoryEntry(entry.order.status).id) {
-      throw `payment_already_pending@order=${entry.order.id},status=${entry.order.status}`;
+    const paymentStatus = module.exports.getFlowStatusFromFlag(flow, 'payment');
+    if (module.exports.getOrderHistoryEntry.apply(this, [entry.order.id, paymentStatus])) {
+      return;
     }
     const toPay = {
       table4_id: entry.order.id,
@@ -47,26 +46,30 @@ module.exports = {
         quantity: item.quantity
       });
     }
-    entry.payment = payment.createPayment(toPay);
+    entry.notes.payment = await pay.createPayment(toPay);
   },
-  refund: function (flow, entry) {
+  startRefund: function (flow, entry) {
     const stage = flow.stages[entry.order.status];
     if (!stage.refund) {
       return;
     }
-    const historyEntry = module.exports.getOrderHistoryEntry(entry.order.status);
-    if (module.exports.getOrderHistoryEntry(entry.order.status).id) {
-      throw `refund_already_pending@order=${entry.order.id},status=${entry.order.status}`;
+    const refundStatus = module.exports.getFlowStatusFromFlag(flow, 'refund');
+    if (module.exports.getOrderHistoryEntry.apply(this, [entry.order.id, refundStatus])) {
+      return;
     }
-    const notes = JSON.parse(historyEntry.notes);
-    const result = payment.refund(notes.payment);
-    // to do
+    const paidStatus = module.exports.getFlowStatusFromFlag(flow, 'paid');
+    const paid = module.exports.getOrderHistoryEntry.apply(this, [entry.order.id, paidStatus]);
+    if (!paid.id) {
+      throw `missing_paid_history_entry@order=${entry.order.id},status=${entry.order.status}`;
+    }
+    const notes = JSON.parse(paid.notes);
+    entry.notes.refund = pay.createRefund(notes.payment);
   },
-  checkOrderMoveToStatus: function (flow, entry, status, authorType) {
-    const stage = flow.stages[entry.order.status];
-    const target = stage.canMoveTo[status];
+  checkOrderMoveToStatus: function (flow, order, newStatus, authorType) {
+    const stage = flow.stages[order.status];
+    const target = stage.canMoveTo[newStatus];
     if (!target || !target.access.includes(authorType)) {
-      throw `order_cannot_move_to_status@order=${entry.order.id},targetStatus=${status}`;
+      throw `order_cannot_move_to_status@order_id=${order.id},oldStatus=${order.status},newStatus=${newStatus}`;
     }
     return true;
   },
@@ -77,11 +80,11 @@ module.exports = {
   getOrderHistoryEntry: function (order_id, status) {
     return this.db.prepare('select * from order_history where order_id = :order_id and status = :status').get({ order_id, status });
   },
-  getStageFromFlag: function (flow, flag) {
+  getFlowStatusFromFlag: (flow, flag) => {
     for (let key in flow.stages) {
       const stage = flow.stages[key];
       if (stage[flag]) {
-        return stage;
+        return key;
       }
     }
     return undefined;
@@ -403,6 +406,7 @@ module.exports = {
   rollback: (db) => {
     if (db && db.isOpen && db.isTransaction) {
       db.exec('rollback');
+      db.close();
     }
   }
 }
