@@ -480,7 +480,6 @@ module.exports = function (options) {
         if (!map[id].product_flags.parent_type) {
           throw `missing_parent_type_flag@product_id=${id},parent_id=${pid}`;
         }
-        map[id].active_quantity = generic.getActiveQuantity(map[id], map[pid]);
       }
       if (utils.fractionalCount(item.quantity) && generic.getFlag('allow_fractional_quantity', map[id]) != 'yes') {
         throw `fractional_quantity_not_allowed@product_id=${id}`;
