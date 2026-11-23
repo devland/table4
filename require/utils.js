@@ -14,8 +14,11 @@ const ut = {
   prx: (number) => { // returns 10 to the power of fractional digit count of number
     return Math.pow(10, ut.fractionalCount(number));
   },
-  dgn: (number) => { // return digits as number; ex: 7.123 => 7123
-    return number * ut.prx(number);
+  dgn: (number, prx) => {
+    if (!prx) {
+      prx = ut.prx(number);
+    }
+    return number * prx;
   },
   multiply: function () { // multiply without js rounding error
     let result = 1;
@@ -29,7 +32,7 @@ const ut = {
     let result = 0;
     for (let item of arguments) {
       const maxPrx = Math.max(ut.prx(result), ut.prx(item));
-      result = (ut.dgn(result) + ut.dgn(item)) / maxPrx;
+      result = (ut.dgn(result, maxPrx) + ut.dgn(item, maxPrx)) / maxPrx;
     }
     return result;
   },

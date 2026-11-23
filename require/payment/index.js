@@ -30,10 +30,11 @@ module.exports = {
       body
     });
     return handleResult(result, {
-      expires_at: new Date(result.expires_at * 1000 || null).toISOString(),
       url: result.url,
+      failed: result.status == 'expired',
       paid: result.payment_status == 'paid',
-      total_amount: result.amount_total
+      amount: result.amount_total / 100,
+      currency: result.currency
     });
   },
   getPayment: async function (payment) {
@@ -44,10 +45,11 @@ module.exports = {
       }
     });
     return handleResult(result, {
-      expires_at: new Date(result.expires_at * 1000 || null).toISOString(),
       url: result.url,
+      failed: result.status == 'expired',
       paid: result.payment_status == 'paid',
-      total_amount: result.amount_total
+      amount: result.amount_total / 100,
+      currency: result.currency
     });
   },
   createRefund: async function (payment) {
@@ -57,10 +59,13 @@ module.exports = {
         'Content-Type': 'application/x-www-form-urlencoded',
         'Authorization': 'Basic ' + btoa(`${config.secret}:`)
       },
-      body: `payment_intent=${payment.payment_intent}`
+      body: `payment_intent=${payment.result.payment_intent}`
     });
     return handleResult(result, {
-      refunded: result.status == 'succeeded'
+      failed: result.status == 'failed',
+      refunded: result.status == 'succeeded',
+      amount: result.amount / 100,
+      currency: result.currency
     });
   },
   getRefund: async function (refund) {
@@ -71,7 +76,10 @@ module.exports = {
       }
     });
     return handleResult(result, {
-      refunded: result.status == 'succeeded'
+      failed: result.status == 'failed',
+      refunded: result.status == 'succeeded',
+      amount: result.amount / 100,
+      currency: result.currency
     });
   },
 }

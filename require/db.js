@@ -232,7 +232,7 @@ module.exports = function (options) {
       result.list = generic.getOrdersExtra.apply(this, [result.list]);
       return result;
     },
-    updateStatus: async function (data) {
+    updateStatus: async function (data, extra = {}) {
       try {
         this.db.exec('begin');
         const getOrder = () => {
@@ -242,7 +242,7 @@ module.exports = function (options) {
           }]).list?.[0];
         }
         let order = getOrder();
-        if (!order.id) {
+        if (!order) {
           throw 'no_such_order';
         }
         const flow = options.flows[order.flow];
@@ -253,7 +253,7 @@ module.exports = function (options) {
           order_id: order.id
         });
         order.status = data.status;
-        const entry = {};
+        const entry = { ...extra };
         entry.order_items = order.order_items;
         delete order.order_items;
         entry.order = order;
@@ -265,6 +265,69 @@ module.exports = function (options) {
       catch (error) {
         generic.rollback(this.db);
         throw error;
+      }
+    },
+    checkPayment: async function (data) {
+      const updateStatus = async (newStatus, notes) => {
+        return await self.orders.updateStatus.apply(this, [{
+          user_id: data.user_id,
+          user_type: config.users.system,
+          uuid: data.uuid,
+          key: data.key,
+          status: newStatus
+        }, { notes }]);
+      }
+      const order = self.orders.get.apply(this, [{
+        uuid: data.uuid,
+        key: data.key
+      }]).list?.[0];
+      if (!order) {
+        throw 'no_such_order';
+      }
+      const flow = options.flows[order.flow];
+      const stage = flow.stages[order.status];
+      if (!stage.payment && !stage.refund) {
+        throw 'order_not_pending_payment_or_refund';
+      }
+      if (stage.payment) {
+        const paidStatus = generic.getFlowStatusFromFlag(flow, 'paid');
+        const paid = generic.getOrderHistoryEntry.apply(this, [order.id, paidStatus]);
+        if (paid) {
+          const notes = JSON.parse(paid.notes);
+          return notes;
+        }
+        const paymentStatus = generic.getFlowStatusFromFlag(flow, 'payment');
+        const payment = generic.getOrderHistoryEntry.apply(this, [order.id, paymentStatus]);
+        const notes = JSON.parse(payment.notes);
+        const result = await pay.getPayment(notes);
+        if (result.paid) {
+          await updateStatus(paidStatus, result);
+        }
+        else if (result.failed) {
+          const paymentFailedStatus = generic.getFlowStatusFromFlag(flow, 'payment_failed');
+          await updateStatus(paymentFailedStatus, result);
+        }
+        return result;
+      }
+      if (stage.refund) {
+        const refundedStatus = generic.getFlowStatusFromFlag(flow, 'refunded');
+        const refunded = generic.getOrderHistoryEntry.apply(this, [order.id, refundedStatus]);
+        if (refunded) {
+          const notes = JSON.parse(refunded.notes);
+          return { refunded: notes.refund.refunded };
+        }
+        const refundStatus = generic.getFlowStatusFromFlag(flow, 'refund');
+        const refund = generic.getOrderHistoryEntry.apply(this, [order.id, refundStatus]);
+        const notes = JSON.parse(refund.notes);
+        const result = await pay.getRefund(notes);
+        if (result.refunded) {
+          await updateStatus(refundedStatus, result);
+        }
+        else if (result.failed) {
+          const refundFailedStatus = generic.getFlowStatusFromFlag(flow, 'refund_failed');
+          await updateStatus(refundFailedStatus, result);
+        }
+        return result;
       }
     },
     create: async function (data) {
@@ -300,45 +363,6 @@ module.exports = function (options) {
       catch (error) {
         generic.rollback(this.db);
         throw error;
-      }
-    },
-    checkPayment: async function (data) {
-      const order = self.orders.get.apply(this, [{
-        uuid: data.uuid,
-        key: data.key
-      }]).list?.[0];
-      if (!order.id) {
-        throw 'no_such_order';
-      }
-      const flow = options.flows[order.flow];
-      const stage = flow.stages[order.status];
-      if (!stage.payment && !stage.refund) {
-        throw 'order_not_pending_payment_or_refund';
-      }
-      if (stage.payment) {
-        const paidStatus = generic.getFlowStatusFromFlag(flow, 'paid');
-        const paid = generic.getOrderHistoryEntry.apply(this, [order.id, paidStatus]);
-        if (paid) {
-          const notes = JSON.parse(paid.notes);
-          return { paid: notes.payment.paid };
-        }
-        const paymentStatus = generic.getFlowStatusFromFlag(flow, 'payment');
-        const payment = generic.getOrderHistoryEntry.apply(this, [order.id, paymentStatus]);
-        const notes = JSON.parse(payment.notes);
-        const result = await pay.getPayment(notes.payment);
-        if (result.paid) {
-          await self.orders.updateStatus.apply(this, [{
-            user_id: data.user_id,
-            user_type: config.users.system,
-            uuid: data.uuid,
-            key: data.key,
-            status: paidStatus
-          }]);
-        }
-        return { paid: result.paid };
-      }
-      if (stage.refund) {
-        // to do
       }
     }
   }

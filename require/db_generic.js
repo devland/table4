@@ -46,9 +46,9 @@ module.exports = {
         quantity: item.quantity
       });
     }
-    entry.notes.payment = await pay.createPayment(toPay);
+    entry.notes = await pay.createPayment(toPay);
   },
-  startRefund: function (flow, entry) {
+  startRefund: async function (flow, entry) {
     const stage = flow.stages[entry.order.status];
     if (!stage.refund) {
       return;
@@ -63,7 +63,7 @@ module.exports = {
       throw `missing_paid_history_entry@order=${entry.order.id},status=${entry.order.status}`;
     }
     const notes = JSON.parse(paid.notes);
-    entry.notes.refund = pay.createRefund(notes.payment);
+    entry.notes = await pay.createRefund(notes);
   },
   checkOrderMoveToStatus: function (flow, order, newStatus, authorType) {
     const stage = flow.stages[order.status];
@@ -397,7 +397,7 @@ module.exports = {
     for (let item of order_items) {
       entries[map[item.order_id]].order_items.push(item);
     }
-    const order_history = this.db.prepare(`select * from order_history where order_id in (${ids}) order by order_id asc`).all();
+    const order_history = this.db.prepare(`select * from order_history where order_id in (${ids}) order by order_id asc, created_at desc`).all();
     for (let item of order_history) {
       entries[map[item.order_id]].order_history.push(item);
     }
